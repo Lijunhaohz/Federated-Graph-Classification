@@ -54,7 +54,7 @@ def prepareData_oneDS(datapath, data, num_client, batchSize, convert_x=False, se
     df = pd.DataFrame()
     num_node_features = graphs[0].num_node_features
     for idx, chunks in enumerate(graphs_chunks):
-        ds = f'{idx}-{data}'
+        ds = f'{idx}-{data}'    # client id
         ds_tvt = chunks
         ds_train, ds_vt = split_data(ds_tvt, train=0.8, test=0.2, shuffle=True, seed=seed)
         ds_val, ds_test = split_data(ds_vt, train=0.5, test=0.5, shuffle=True, seed=seed)
