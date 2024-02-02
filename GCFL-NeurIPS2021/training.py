@@ -101,7 +101,27 @@ def run_fedprox(clients, server, COMMUNICATION_ROUNDS, local_epoch, mu, samp=Non
     return frame
 
 
-def run_gcfl(clients, server, COMMUNICATION_ROUNDS, local_epoch, EPS_1, EPS_2):
+def run_gcfl(clients: list(), 
+             server: object,
+             COMMUNICATION_ROUNDS: int,
+             local_epoch : int,
+             EPS_1: float,
+             EPS_2: float) -> pd.DataFrame:
+    '''
+    Run the GCFL algorithm.
+
+    Args:
+        clients: list of clients
+        server: server object
+        COMMUNICATION_ROUNDS: number of communication rounds
+        local_epoch: number of local epochs
+        EPS_1: threshold for mean update norm
+        EPS_2: threshold for max update norm
+
+    Returns:
+        frame: pandas dataframe with test accuracies
+    '''
+
     cluster_indices = [np.arange(len(clients)).astype("int")]
     client_clusters = [[clients[i] for i in idcs] for idcs in cluster_indices]
 

@@ -1,3 +1,4 @@
+import pandas as pd
 import torch
 from torch_geometric.utils import to_networkx, degree
 import torch.nn.functional as F
@@ -26,7 +27,17 @@ def convert_to_nodeDegreeFeatures(graphs):
 
     return new_graphs
 
-def get_maxDegree(graphs):
+
+def get_maxDegree(graphs) -> int:
+    '''
+    Get the maximum degree of the graphs in the dataset.
+
+    Args:
+    - graphs: list of graphs
+
+    Returns:
+    - int: maximum degree
+    '''
     maxdegree = 0
     for i, graph in enumerate(graphs):
         g = to_networkx(graph, to_undirected=True)
@@ -35,6 +46,7 @@ def get_maxDegree(graphs):
             maxdegree = gdegree
 
     return maxdegree
+
 
 def use_node_attributes(graphs):
     num_node_attributes = graphs.num_node_attributes
@@ -46,11 +58,11 @@ def use_node_attributes(graphs):
     return new_graphs
 
 
-def split_data(graphs, 
+def split_data(graphs: list,
                train=None, 
                test=None, 
-               shuffle=True, 
-               seed=None) -> (list, list):
+               shuffle: bool=True, 
+               seed: int=None) -> (list, list):
     '''
     Split the dataset into training and test sets.
 
@@ -71,7 +83,7 @@ def split_data(graphs,
     return graphs_train, graphs_test
 
 
-def get_numGraphLabels(dataset) -> int:
+def get_numGraphLabels(dataset: list) -> int:
     '''
     Get the number of unique graph labels in the dataset.
 
@@ -87,32 +99,63 @@ def get_numGraphLabels(dataset) -> int:
     return len(s)
 
 
-def _get_avg_nodes_edges(graphs):
+def _get_avg_nodes_edges(graphs: list) -> (float, float):
+    '''
+    Calculate the average number of nodes and edges in the dataset.
+
+    Args:
+    - graphs: list of graphs
+
+    Returns:
+    - avgNodes: average number of nodes
+    - avgEdges: average number of edges
+    '''
     numNodes = 0.
     numEdges = 0.
     numGraphs = len(graphs)
     for g in graphs:
         numNodes += g.num_nodes
         numEdges += g.num_edges / 2.  # undirected
-    return numNodes/numGraphs, numEdges/numGraphs
+
+    avgNodes = numNodes / numGraphs
+    avgEdges = numEdges / numGraphs
+    return avgNodes, avgEdges
 
 
-def get_stats(df, ds, graphs_train, graphs_val=None, graphs_test=None):
-    df.loc[ds, "#graphs_train"] = len(graphs_train)
+def get_stats(df: pd.DataFrame,
+              ds_client_name: str,
+              graphs_train: list,
+              graphs_val: list=None, 
+              graphs_test: list=None) -> pd.DataFrame:
+    '''
+    Calculate and store the statistics of the dataset.
+
+    Args:
+    - df: pd.DataFrame, the statistics of data.
+    - ds_client_name: str, the name of the dataset accompanied by the client id.
+    - graphs_train: list of training graphs.
+    - graphs_val: list of validation graphs.
+    - graphs_test: list of testing graphs.
+
+    Returns:
+    - df: pd.DataFrame, the updated statistics of data.
+    '''
+    
+    df.loc[ds_client_name, "#graphs_train"] = len(graphs_train)
     avgNodes, avgEdges = _get_avg_nodes_edges(graphs_train)
-    df.loc[ds, 'avgNodes_train'] = avgNodes
-    df.loc[ds, 'avgEdges_train'] = avgEdges
+    df.loc[ds_client_name, 'avgNodes_train'] = avgNodes
+    df.loc[ds_client_name, 'avgEdges_train'] = avgEdges
 
     if graphs_val:
-        df.loc[ds, '#graphs_val'] = len(graphs_val)
+        df.loc[ds_client_name, '#graphs_val'] = len(graphs_val)
         avgNodes, avgEdges = _get_avg_nodes_edges(graphs_val)
-        df.loc[ds, 'avgNodes_val'] = avgNodes
-        df.loc[ds, 'avgEdges_val'] = avgEdges
+        df.loc[ds_client_name, 'avgNodes_val'] = avgNodes
+        df.loc[ds_client_name, 'avgEdges_val'] = avgEdges
 
     if graphs_test:
-        df.loc[ds, '#graphs_test'] = len(graphs_test)
+        df.loc[ds_client_name, '#graphs_test'] = len(graphs_test)
         avgNodes, avgEdges = _get_avg_nodes_edges(graphs_test)
-        df.loc[ds, 'avgNodes_test'] = avgNodes
-        df.loc[ds, 'avgEdges_test'] = avgEdges
+        df.loc[ds_client_name, 'avgNodes_test'] = avgNodes
+        df.loc[ds_client_name, 'avgEdges_test'] = avgEdges
 
     return df

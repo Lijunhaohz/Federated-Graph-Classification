@@ -2,7 +2,10 @@ import torch
 
 
 class Client_GC():
-    def __init__(self, model, client_id, client_name, train_size, dataLoader, optimizer, args):
+    def __init__(self, model, client_id, client_name, train_size, dataLoader, optimizer, args) -> None:
+        '''
+        Initialize the client model.
+        '''
         self.model = model.to(args.device)
         self.id = client_id
         self.name = client_name

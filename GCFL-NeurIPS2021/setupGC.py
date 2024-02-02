@@ -1,8 +1,9 @@
 import random
 from random import choices
+import argparse
+
 import numpy as np
 import pandas as pd
-
 import torch
 from torch_geometric.datasets import TUDataset
 from torch_geometric.data import DataLoader
@@ -14,10 +15,10 @@ from client import Client_GC
 from utils import get_maxDegree, get_stats, split_data, get_numGraphLabels
 
 
-def _randChunk(graphs, 
-               num_client=10, 
-               overlap=False, 
-               seed=None) -> list:
+def _randChunk(graphs: list,
+               num_client: int=10, 
+               overlap: bool=False, 
+               seed: int=None) -> list:
     '''
     Randomly split graphs into chunks for each client.
 
@@ -49,13 +50,13 @@ def _randChunk(graphs,
     return graphs_chunks
 
 
-def prepareData_oneDS(datapath, 
-                      dataset='PROTEINS', 
-                      num_client=10, 
-                      batchSize=128, 
-                      convert_x=False, 
-                      seed=None, 
-                      overlap=False) -> (dict, pd.DataFrame):
+def prepareData_oneDS(datapath: str,
+                      dataset: str='PROTEINS', 
+                      num_client: int=10, 
+                      batchSize: int=128, 
+                      convert_x: bool=False, 
+                      seed: int=None,
+                      overlap: bool=False) -> (dict, pd.DataFrame):
     '''
     Prepare data for one dataset to multiple clients.
 
@@ -88,7 +89,7 @@ def prepareData_oneDS(datapath,
     graphs = [x for x in tudataset]
     print("Dataset name: ", dataset, " Total number of graphs: ", len(graphs))
 
-    # Split data into chunks for each client
+    ''' Split data into chunks for each client '''
     graphs_chunks = _randChunk(graphs=graphs, 
                                num_client=num_client, 
                                overlap=overlap, 
@@ -111,79 +112,190 @@ def prepareData_oneDS(datapath,
         dataloader_val = DataLoader(ds_val, batch_size=batchSize, shuffle=True)
         dataloader_test = DataLoader(ds_test, batch_size=batchSize, shuffle=True)
         num_graph_labels = get_numGraphLabels(ds_train)
+
+        '''Combine data'''
         splitedData[ds] = ({'train': dataloader_train, 'val': dataloader_val, 'test': dataloader_test},
                            num_node_features, num_graph_labels, len(ds_train))
         
-        stats_df = get_stats(stats_df, ds, ds_train, graphs_val=ds_val, graphs_test=ds_test)
+        '''Statistics'''
+        stats_df = get_stats(df=stats_df, 
+                             ds_client_name=ds, 
+                             graphs_train=ds_train, 
+                             graphs_val=ds_val, 
+                             graphs_test=ds_test)
 
     return splitedData, stats_df
 
-def prepareData_multiDS(datapath, group='small', batchSize=32, convert_x=False, seed=None):
-    assert group in ['molecules', 'molecules_tiny', 'small', 'mix', "mix_tiny", "biochem", "biochem_tiny"]
 
-    if group == 'molecules' or group == 'molecules_tiny':
+def prepareData_multiDS(datapath: str,
+                        dataset_group: str='small', 
+                        batchSize: int=32, 
+                        convert_x: bool=False, 
+                        seed: int=None):
+    '''
+    Prepare data for multiple datasets.
+
+    Args:
+    - datapath: str, the input path of data.
+    - dataset_group: str, the name of dataset group.
+    - batchSize: int, the batch size for node classification.
+    - convert_x: bool, whether to convert node features to one-hot degree.
+    - seed: int, seed for randomness.
+
+    Returns:
+    - splitedData: dict, the data for each client.
+    - df: pd.DataFrame, the statistics of data.
+    '''
+
+    assert dataset_group in ['molecules', 'molecules_tiny', 'small', 'mix', "mix_tiny", "biochem", "biochem_tiny"]
+
+    if dataset_group == 'molecules' or dataset_group == 'molecules_tiny':
         datasets = ["MUTAG", "BZR", "COX2", "DHFR", "PTC_MR", "AIDS", "NCI1"]
-    if group == 'small':
+    if dataset_group == 'small':
         datasets = ["MUTAG", "BZR", "COX2", "DHFR", "PTC_MR",                   # small molecules
                     "ENZYMES", "DD", "PROTEINS"]                                # bioinformatics
-    if group == 'mix' or group == 'mix_tiny':
+    if dataset_group == 'mix' or dataset_group == 'mix_tiny':
         datasets = ["MUTAG", "BZR", "COX2", "DHFR", "PTC_MR", "AIDS", "NCI1",   # small molecules
                     "ENZYMES", "DD", "PROTEINS",                                # bioinformatics
                     "COLLAB", "IMDB-BINARY", "IMDB-MULTI"]                      # social networks
-    if group == 'biochem' or group == 'biochem_tiny':
+    if dataset_group == 'biochem' or dataset_group == 'biochem_tiny':
         datasets = ["MUTAG", "BZR", "COX2", "DHFR", "PTC_MR", "AIDS", "NCI1",  # small molecules
                     "ENZYMES", "DD", "PROTEINS"]                               # bioinformatics
 
     splitedData = {}
     df = pd.DataFrame()
-    for data in datasets:
-        if data == "COLLAB":
-            tudataset = TUDataset(f"{datapath}/TUDataset", data, pre_transform=OneHotDegree(491, cat=False))
-        elif data == "IMDB-BINARY":
-            tudataset = TUDataset(f"{datapath}/TUDataset", data, pre_transform=OneHotDegree(135, cat=False))
-        elif data == "IMDB-MULTI":
-            tudataset = TUDataset(f"{datapath}/TUDataset", data, pre_transform=OneHotDegree(88, cat=False))
+
+    for dataset in datasets:
+        if dataset == "COLLAB":
+            tudataset = TUDataset(f"{datapath}/TUDataset", dataset, pre_transform=OneHotDegree(491, cat=False))
+        elif dataset == "IMDB-BINARY":
+            tudataset = TUDataset(f"{datapath}/TUDataset", dataset, pre_transform=OneHotDegree(135, cat=False))
+        elif dataset == "IMDB-MULTI":
+            tudataset = TUDataset(f"{datapath}/TUDataset", dataset, pre_transform=OneHotDegree(88, cat=False))
         else:
-            tudataset = TUDataset(f"{datapath}/TUDataset", data)
+            tudataset = TUDataset(f"{datapath}/TUDataset", dataset)
             if convert_x:
                 maxdegree = get_maxDegree(tudataset)
-                tudataset = TUDataset(f"{datapath}/TUDataset", data, transform=OneHotDegree(maxdegree, cat=False))
+                tudataset = TUDataset(f"{datapath}/TUDataset", dataset, transform=OneHotDegree(maxdegree, cat=False))
 
         graphs = [x for x in tudataset]
-        print("  **", data, len(graphs))
+        print("Dataset name: ", dataset, " Total number of graphs: ", len(graphs))
 
+        '''Split data'''
         graphs_train, graphs_valtest = split_data(graphs, test=0.2, shuffle=True, seed=seed)
         graphs_val, graphs_test = split_data(graphs_valtest, train=0.5, test=0.5, shuffle=True, seed=seed)
-        if group.endswith('tiny'):
+
+        if dataset_group.endswith('tiny'):
             graphs, _ = split_data(graphs, train=150, shuffle=True, seed=seed)
-            graphs_train, graphs_valtest = split_data(graphs, test=0.2, shuffle=True, seed=seed)
-            graphs_val, graphs_test = split_data(graphs_valtest, train=0.5, test=0.5, shuffle=True, seed=seed)
+            graphs_train, graphs_val_test = split_data(graphs, test=0.2, shuffle=True, seed=seed)
+            graphs_val, graphs_test = split_data(graphs_val_test, train=0.5, test=0.5, shuffle=True, seed=seed)
 
         num_node_features = graphs[0].num_node_features
         num_graph_labels = get_numGraphLabels(graphs_train)
 
+        '''Generate data loader'''
         dataloader_train = DataLoader(graphs_train, batch_size=batchSize, shuffle=True)
         dataloader_val = DataLoader(graphs_val, batch_size=batchSize, shuffle=True)
         dataloader_test = DataLoader(graphs_test, batch_size=batchSize, shuffle=True)
 
-        splitedData[data] = ({'train': dataloader_train, 'val': dataloader_val, 'test': dataloader_test},
+        '''Combine data'''
+        splitedData[dataset] = ({'train': dataloader_train, 'val': dataloader_val, 'test': dataloader_test},
                              num_node_features, num_graph_labels, len(graphs_train))
 
-        df = get_stats(df, data, graphs_train, graphs_val=graphs_val, graphs_test=graphs_test)
+        '''Statistics'''
+        df = get_stats(df, dataset, graphs_train, graphs_val=graphs_val, graphs_test=graphs_test)
+
     return splitedData, df
 
 
-def setup_devices(splitedData, args):
+def setup_clients(splitedData: dict, 
+                  args: argparse.ArgumentParser=None) -> (list, dict):
+    '''
+    Setup clients
+
+    Args:
+    - splitedData: dict, the data for each client.
+    - args: argparse.ArgumentParser, the input arguments.
+
+    Returns:
+    - clients: list, the list of clients.
+    - idx_clients: dict, the index of clients.
+    '''
+
     idx_clients = {}
     clients = []
-    for idx, ds in enumerate(splitedData.keys()):
-        idx_clients[idx] = ds
-        dataloaders, num_node_features, num_graph_labels, train_size = splitedData[ds]
-        cmodel_gc = GIN(num_node_features, args.hidden, num_graph_labels, args.nlayer, args.dropout)
-        # optimizer = torch.optim.Adam(cmodel_gc.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-        optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, cmodel_gc.parameters()), lr=args.lr, weight_decay=args.weight_decay)
-        clients.append(Client_GC(cmodel_gc, idx, ds, train_size, dataloaders, optimizer, args))
+    for idx, dataset_client_name in enumerate(splitedData.keys()):
+        idx_clients[idx] = dataset_client_name
+        '''acquire data'''
+        dataloaders, num_node_features, num_graph_labels, train_size = splitedData[dataset_client_name]
+
+        '''build GIN model'''
+        cmodel_gc = GIN(nfeat=num_node_features, 
+                        nhid=args.hidden, 
+                        nclass=num_graph_labels, 
+                        nlayer=args.nlayer, 
+                        dropout=args.dropout)
+       
+        '''build optimizer'''
+        optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, cmodel_gc.parameters()), 
+                                     lr=args.lr, 
+                                     weight_decay=args.weight_decay)
+
+        '''build client'''
+        client = Client_GC(model=cmodel_gc, 
+                           client_id=idx, 
+                           client_name=dataset_client_name, 
+                           train_size=train_size, 
+                           dataLoader=dataloaders, 
+                           optimizer=optimizer, 
+                           args=args)
+
+        clients.append(client)
+
+    return clients, idx_clients
+
+
+def setup_server(args: argparse.ArgumentParser=None) -> Server:
+    '''
+    Setup server.
+
+    Args:
+    - args: argparse.ArgumentParser, the input arguments.
+
+    Returns:
+    - server: Server, the server.
+    '''
 
     smodel = serverGIN(nlayer=args.nlayer, nhid=args.hidden)
     server = Server(smodel, args.device)
-    return clients, server, idx_clients
+    return server
+
+
+# def setup_devices(splitedData, 
+#                   args=None) -> (list, Server, dict):
+#     '''
+#     Setup devices for clients and server.
+
+#     Args:
+#     - splitedData: dict, the data for each client.
+#     - args: argparse.ArgumentParser, the input arguments.
+
+#     Returns:
+#     - clients: list, the list of clients.
+#     - server: Server, the server.
+#     - idx_clients: dict, the index of clients.
+#     '''
+
+#     idx_clients = {}
+#     clients = []
+#     for idx, dataset_client in enumerate(splitedData.keys()):
+#         idx_clients[idx] = dataset_client
+#         dataloaders, num_node_features, num_graph_labels, train_size = splitedData[dataset_client]
+#         cmodel_gc = GIN(num_node_features, args.hidden, num_graph_labels, args.nlayer, args.dropout)
+#         # optimizer = torch.optim.Adam(cmodel_gc.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+#         optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, cmodel_gc.parameters()), lr=args.lr, weight_decay=args.weight_decay)
+#         clients.append(Client_GC(cmodel_gc, idx, dataset_client, train_size, dataloaders, optimizer, args))
+
+#     smodel = serverGIN(nlayer=args.nlayer, nhid=args.hidden)
+#     server = Server(smodel, args.device)
+#     return clients, server, idx_clients
