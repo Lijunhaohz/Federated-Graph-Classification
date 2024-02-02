@@ -45,13 +45,42 @@ def use_node_attributes(graphs):
         new_graphs.append(new_graph)
     return new_graphs
 
-def split_data(graphs, train=None, test=None, shuffle=True, seed=None):
+
+def split_data(graphs, 
+               train=None, 
+               test=None, 
+               shuffle=True, 
+               seed=None) -> (list, list):
+    '''
+    Split the dataset into training and test sets.
+
+    Args:
+    - graphs: list of graphs
+    - train: float or int, if float, should be between 0.0 and 1.0 and represent the proportion of the dataset to include in the train split. If int, represents the absolute number of train samples.
+    - test: float or int, if float, should be between 0.0 and 1.0 and represent the proportion of the dataset to include in the test split. If int, represents the absolute number of test samples.
+    - shuffle: bool, whether or not to shuffle the data before splitting.
+    - seed: int, seed for the random number generator.
+
+    Returns:
+    - graphs_train: list of training graphs
+    - graphs_test: list of testing graphs
+    
+    '''
     y = torch.cat([graph.y for graph in graphs])
-    graphs_tv, graphs_test = train_test_split(graphs, train_size=train, test_size=test, stratify=y, shuffle=shuffle, random_state=seed)
-    return graphs_tv, graphs_test
+    graphs_train, graphs_test = train_test_split(graphs, train_size=train, test_size=test, stratify=y, shuffle=shuffle, random_state=seed)
+    return graphs_train, graphs_test
 
 
-def get_numGraphLabels(dataset):
+def get_numGraphLabels(dataset) -> int:
+    '''
+    Get the number of unique graph labels in the dataset.
+
+    Args:
+    - dataset: list of graphs
+
+    Returns:
+    - int: number of unique graph labels
+    '''
     s = set()
     for g in dataset:
         s.add(g.y.item())

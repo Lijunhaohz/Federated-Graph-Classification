@@ -236,4 +236,4 @@ def eval_gc_prox(model, test_loader, device, gconvNames, mu, Wt):
         acc_sum += pred.max(dim=1)[1].eq(label).sum().item()
         ngraphs += batch.num_graphs
 
-    return total_loss/ngraphs, acc_sum/ngraphs
+    return total_loss / ngraphs, acc_sum / ngraphs
