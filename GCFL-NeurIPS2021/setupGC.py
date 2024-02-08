@@ -242,12 +242,12 @@ def setup_clients(splitedData: dict,
                                      weight_decay=args.weight_decay)
 
         '''build client'''
-        client = Client_GC(model=cmodel_gc, 
-                           client_id=idx, 
-                           client_name=dataset_client_name, 
-                           train_size=train_size, 
-                           dataLoader=dataloaders, 
-                           optimizer=optimizer, 
+        client = Client_GC(model=cmodel_gc,                     # GIN model
+                           client_id=idx,                       # client id
+                           client_name=dataset_client_name,     # client name
+                           train_size=train_size,               # training size
+                           dataLoader=dataloaders,              # data loader
+                           optimizer=optimizer,                 # optimizer
                            args=args)
 
         clients.append(client)

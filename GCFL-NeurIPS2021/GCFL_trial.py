@@ -9,14 +9,34 @@ import setupGC
 from training import *
 
 
-def process_gcfl(clients, server):
+def process_fedavg(clients: list, server: object) -> None:
+    '''
+    Entrance of running the FedAvg algorithm.
+
+    :param clients: list of Client objects
+    :param server: Server object
+    '''
+    print("\nDone setting up FedAvg devices.")
+    print("Running FedAvg ...")
+
+    outfile = os.path.join(outpath, f'accuracy_fedavg_GC.csv')
+
+    frame = run_fedavg(clients, server, args.num_rounds, args.local_epoch, samp=None)
+    frame.to_csv(outfile)
+    print(f"Wrote to file: {outfile}")
+
+
+def process_gcfl(clients: list, server: object) -> None:
+    '''
+    Entrance of running the GCFL algorithm.
+
+    :param clients: list of Client objects
+    :param server: Server object
+    '''
     print("\nDone setting up GCFL devices.")
     print("Running GCFL ...")
 
-    if args.repeat is None:
-        outfile = os.path.join(outpath, f'accuracy_gcfl_GC.csv')
-    else:
-        outfile = os.path.join(outpath, "repeats", f'{args.repeat}_accuracy_gcfl_GC.csv')
+    outfile = os.path.join(outpath, f'accuracy_gcfl_GC.csv')
 
     frame = run_gcfl(clients, server, args.num_rounds, args.local_epoch, EPS_1, EPS_2)
     frame.to_csv(outfile)
@@ -111,9 +131,13 @@ if __name__ == '__main__':
     df_stats.to_csv(outf)
     print(f"Wrote to {outf}")
 
-    init_clients, init_server, _ = setupGC.setup_devices(splitedData, args)
+    init_clients, _ = setupGC.setup_clients(splitedData, args)
+    init_server = setupGC.setup_server(args)
+
     print("\nDone setting up devices.")
 
+    #################### run FedAvg ####################
+    process_fedavg(clients=copy.deepcopy(init_clients), server=copy.deepcopy(init_server))
     #################### run GCFL ####################
     process_gcfl(clients=copy.deepcopy(init_clients), server=copy.deepcopy(init_server))
 

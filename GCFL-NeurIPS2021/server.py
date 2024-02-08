@@ -14,13 +14,20 @@ class Server():
     def randomSample_clients(self, all_clients, frac):
         return random.sample(all_clients, int(len(all_clients) * frac))
 
-    def aggregate_weights(self, selected_clients):
-        # pass train_size, and weighted aggregate
+    def aggregate_weights(self, selected_clients: list) -> None:
+        '''
+        Perform weighted aggregation among selected clients. The weights are the number of training samples.
+
+        :param selected_clients: list of Client objects
+        '''
         total_size = 0
         for client in selected_clients:
             total_size += client.train_size
+    
         for k in self.W.keys():
-            self.W[k].data = torch.div(torch.sum(torch.stack([torch.mul(client.W[k].data, client.train_size) for client in selected_clients]), dim=0), total_size).clone()
+            # pass train_size, and weighted aggregate
+            accumulate = torch.stack([torch.mul(client.W[k].data, client.train_size) for client in selected_clients])
+            self.W[k].data = torch.div(torch.sum(accumulate, dim=0), total_size).clone()
 
     def compute_pairwise_similarities(self, clients):
         client_dWs = []

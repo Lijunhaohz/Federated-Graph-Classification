@@ -19,30 +19,49 @@ def run_selftrain_GC(clients, server, local_epoch):
     return allAccs
 
 
-def run_fedavg(clients, server, COMMUNICATION_ROUNDS, local_epoch, samp=None, frac=1.0):
+def run_fedavg(clients: list,
+               server: object,
+               COMMUNICATION_ROUNDS: int,
+               local_epoch: int,
+               samp: str = None,
+               frac: float = 1.0) -> pd.DataFrame:
+    '''
+    Run the training and testing process of FedAvg algorithm.
+
+    Args:
+        clients: list of clients
+        server: server object
+        COMMUNICATION_ROUNDS: number of communication rounds
+        local_epoch: number of local epochs
+        samp: sampling method
+        frac: fraction of clients to sample
+
+    Returns:
+        frame: pandas dataframe with test accuracies
+    '''
+
     for client in clients:
-        client.download_from_server(server)
+        client.download_from_server(server) # download the global model
 
-    if samp is None:
-        sampling_fn = server.randomSample_clients
-        frac = 1.0
-
+    # Overall training architecture: 
+    # whole training => { communication rounds, communication rounds, ..., communication rounds }
+    # communication rounds => { local training -> aggregation -> download }
     for c_round in range(1, COMMUNICATION_ROUNDS + 1):
         if (c_round) % 50 == 0:
-            print(f"  > round {c_round}")
+            print(f"  > round {c_round}")   # print the current round every 50 rounds
 
-        if c_round == 1:
+        if samp is None or c_round == 1:
             selected_clients = clients
         else:
-            selected_clients = sampling_fn(clients, frac)
+            selected_clients = server.randomSample_clients(clients, frac)   # sample clients
+            # if samp = None, frac=1.0, then all clients are selected
 
-        for client in selected_clients:
-            # only get weights of graphconv layers
-            client.local_train(local_epoch)
+        for client in selected_clients:             # only get weights of graphconv layers
+            client.local_train(local_epoch)         # train the local model
 
-        server.aggregate_weights(selected_clients)
+        server.aggregate_weights(selected_clients)  # aggregate the weights of selected clients
         for client in selected_clients:
-            client.download_from_server(server)
+            client.download_from_server(server)     # re-download the global server
 
     frame = pd.DataFrame()
     for client in clients:
@@ -101,7 +120,7 @@ def run_fedprox(clients, server, COMMUNICATION_ROUNDS, local_epoch, mu, samp=Non
     return frame
 
 
-def run_gcfl(clients: list(), 
+def run_gcfl(clients: list, 
              server: object,
              COMMUNICATION_ROUNDS: int,
              local_epoch : int,
