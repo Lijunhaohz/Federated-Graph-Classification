@@ -27,6 +27,7 @@ class Client_GC():
         self.convWeightsNorm = 0.
         self.convDWsNorm = 0.
 
+
     def download_from_server(self, server: object) -> None:
         '''
         Download the global model weights from the server.
@@ -38,18 +39,37 @@ class Client_GC():
         for k in server.W:
             self.W[k].data = server.W[k].data.clone()
 
-    def cache_weights(self):
+
+    def cache_weights(self) -> dict:
+        '''
+        Cache the weights of the model.
+
+        Returns:
+        - dict: the cached weights
+        '''
         for name in self.W.keys():
             self.W_old[name].data = self.W[name].data.clone()
 
-    def reset(self):
+
+    def reset(self) -> None:
+        '''
+        Reset the weights of the model to the cached weights.
+        The implementation is copying the cached weights (W_old) to the model weights (W).
+
+        '''
         copy(target=self.W, source=self.W_old, keys=self.gconvNames)
 
-    def local_train(self, local_epoch):
-        """ For self-train & FedAvg """
-        train_stats = train_gc(self.model, self.dataLoader, self.optimizer, local_epoch, self.args.device)
 
+    def set_stats_norms(self, train_stats: dict, is_gcfl: bool = False) -> None:
+        '''
+        Set the norms of the weights and gradients of the model.
+
+        Args:
+        - train_stats: dict, the training statistics
+        - is_gcfl: bool, whether the model is trained with GCFL
+        '''
         self.train_stats = train_stats
+
         self.weightsNorm = torch.norm(flatten(self.W)).item()
 
         weights_conv = {key: self.W[key] for key in self.gconvNames}
@@ -61,69 +81,133 @@ class Client_GC():
         grads_conv = {key: self.W[key].grad for key in self.gconvNames}
         self.convGradsNorm = torch.norm(flatten(grads_conv)).item()
 
-    def compute_weight_update(self, local_epoch):
-        """ For GCFL """
+        if is_gcfl:
+            dWs_conv = {key: self.dW[key] for key in self.gconvNames}
+            self.convDWsNorm = torch.norm(flatten(dWs_conv)).item()
+
+
+    def local_train(self, local_epoch: int) -> None:
+        """ 
+        Train the model locally for self-train & FedAvg 
+
+        Args:
+        - local_epoch: int, the number of local epochs
+        """
+        train_stats = train_gc(model=self.model, 
+                               dataloaders=self.dataLoader, 
+                               optimizer=self.optimizer, 
+                               local_epoch=local_epoch, 
+                               device=self.args.device)
+
+        self.set_stats_norms(train_stats)
+
+
+    def local_train_prox(self, local_epoch: int, mu: float) -> None:
+        '''
+        Train the model locally for FedProx with the proximal term.
+
+        Args:
+        - local_epoch: int, the number of local epochs
+        - mu: float, the proximal term coefficient
+        '''
+        train_stats = train_gc_prox(model=self.model, 
+                                    dataloaders=self.dataLoader, 
+                                    optimizer=self.optimizer, 
+                                    local_epoch=local_epoch, 
+                                    device=self.args.device,
+                                    gconvNames=self.gconvNames, 
+                                    Ws=self.W, 
+                                    mu=mu, 
+                                    Wt=self.W_old)
+
+        self.set_stats_norms(train_stats)
+
+
+    def compute_weight_update(self, local_epoch: int) -> None:
+        """ 
+        Train the model locally for GCFL.
+
+        Args:
+        - local_epoch: int, the number of local epochs
+        """
+
         copy(target=self.W_old, source=self.W, keys=self.gconvNames)
 
-        train_stats = train_gc(self.model, self.dataLoader, self.optimizer, local_epoch, self.args.device)
+        train_stats = train_gc(model=self.model, 
+                               dataloaders=self.dataLoader, 
+                               optimizer=self.optimizer, 
+                               local_epoch=local_epoch, 
+                               device=self.args.device)
 
-        subtract_(target=self.dW, minuend=self.W, subtrahend=self.W_old)
+        subtract_(target=self.dW, minuend=self.W, subtrahend=self.W_old)    # dW = W - W_old
 
-        self.train_stats = train_stats
+        self.set_stats_norms(train_stats, is_gcfl=True)
 
-        self.weightsNorm = torch.norm(flatten(self.W)).item()
 
-        weights_conv = {key: self.W[key] for key in self.gconvNames}
-        self.convWeightsNorm = torch.norm(flatten(weights_conv)).item()
+    def evaluate(self) -> tuple:
+        '''
+        Final evaluation of the model on the test dataset.
 
-        dWs_conv = {key: self.dW[key] for key in self.gconvNames}
-        self.convDWsNorm = torch.norm(flatten(dWs_conv)).item()
-
-        grads = {key: value.grad for key, value in self.W.items()}
-        self.gradsNorm = torch.norm(flatten(grads)).item()
-
-        grads_conv = {key: self.W[key].grad for key in self.gconvNames}
-        self.convGradsNorm = torch.norm(flatten(grads_conv)).item()
-
-    def evaluate(self):
+        Returns:
+        - tuple(float, float): the average loss and accuracy
+        '''
         return eval_gc(self.model, self.dataLoader['test'], self.args.device)
 
-    def local_train_prox(self, local_epoch, mu):
-        """ For FedProx """
-        train_stats = train_gc_prox(self.model, self.dataLoader, self.optimizer, local_epoch, self.args.device,
-                               self.gconvNames, self.W, mu, self.W_old)
-
-        self.train_stats = train_stats
-        self.weightsNorm = torch.norm(flatten(self.W)).item()
-
-        weights_conv = {key: self.W[key] for key in self.gconvNames}
-        self.convWeightsNorm = torch.norm(flatten(weights_conv)).item()
-
-        grads = {key: value.grad for key, value in self.W.items()}
-        self.gradsNorm = torch.norm(flatten(grads)).item()
-
-        grads_conv = {key: self.W[key].grad for key in self.gconvNames}
-        self.convGradsNorm = torch.norm(flatten(grads_conv)).item()
 
     def evaluate_prox(self, mu):
         return eval_gc_prox(self.model, self.dataLoader['test'], self.args.device, self.gconvNames, mu, self.W_old)
 
 
-def copy(target, source, keys):
+def copy(target: dict, source: dict, keys: list) -> None:
+    '''
+    Copy the source weights to the target weights.
+
+    Args:
+    - target: dict, the target weights
+    - source: dict, the source weights
+    - keys: list, the names of the layers
+    '''
     for name in keys:
         target[name].data = source[name].data.clone()
 
 
-def subtract_(target, minuend, subtrahend):
+def subtract_(target: dict, minuend: dict, subtrahend: dict) -> None:
+    '''
+    Subtract the subtrahend from the minuend and store the result in the target.
+
+    Args:
+    - target: dict, the target weights
+    - minuend: dict, the minuend weights
+    - subtrahend: dict, the subtrahend weights
+    '''
     for name in target:
         target[name].data = minuend[name].data.clone() - subtrahend[name].data.clone()
 
 
-def flatten(w):
+def flatten(w: dict) -> torch.tensor:
+    '''
+    Flatten the gradients of a client into a 1D tensor.
+
+    Args:
+    - w: dict, the gradients of a client
+
+    Returns:
+    - torch.tensor: the flattened gradients
+    '''
     return torch.cat([v.flatten() for v in w.values()])
 
 
-def calc_gradsNorm(gconvNames, Ws):
+def calc_gradsNorm(gconvNames: list, Ws: dict) -> float:
+    '''
+    Calculate the norm of the gradients of the gconv layers.
+
+    Args:
+    - gconvNames: list, the names of the gconv layers
+    - Ws: dict, the weights of the model
+
+    Returns:
+    - float: the norm of the gradients of the gconv layers
+    '''
     grads_conv = {k: Ws[k].grad for k in gconvNames}
     convGradsNorm = torch.norm(flatten(grads_conv)).item()
     return convGradsNorm
@@ -218,24 +302,58 @@ def eval_gc(model: object,
     return total_loss / num_graphs, total_acc / num_graphs
 
 
-def _prox_term(model, gconvNames, Wt):
+def _prox_term(model: object, gconvNames: list, Wt: dict) -> torch.tensor:
+    '''
+    Compute the proximal term.
+
+    Args:
+    - model: object, the model to be trained
+    - gconvNames: list, the names of the gconv layers
+    - Wt: dict, the target weights
+
+    Returns:
+    - torch.tensor: the proximal term
+    '''
     prox = torch.tensor(0., requires_grad=True)
     for name, param in model.named_parameters():
-        # only add the prox term for sharing layers (gConv)
-        if name in gconvNames:
-            prox = prox + torch.norm(param - Wt[name]).pow(2)
+        if name in gconvNames:      # only add the prox term for sharing layers (gConv)
+            prox = prox + torch.norm(param - Wt[name]).pow(2)   # force the weights to be close to the old weights
     return prox
 
 
-def train_gc_prox(model, dataloaders, optimizer, local_epoch, device, gconvNames, Ws, mu, Wt):
+def train_gc_prox(model: object,
+                  dataloaders: dict,
+                  optimizer: object,
+                  local_epoch: int,
+                  device: str,
+                  gconvNames: list,
+                  Ws: dict, 
+                  mu: float, 
+                  Wt: dict) -> dict:
+    '''
+    Train the model on the local dataset with the proximal term.
+
+    Args:
+    - model: object, the model to be trained
+    - dataloaders: dict, the dataloaders for training, validation, and testing
+    - optimizer: object, the optimizer for training
+    - local_epoch: int, the number of local epochs
+    - device: str, the device to run the training
+    - gconvNames: list, the names of the gconv layers
+    - Ws: dict, the weights of the model
+    - mu: float, the proximal term
+    - Wt: dict, the target weights (W_old)
+
+    Returns:
+    - dict: the training statistics
+    '''
     losses_train, accs_train, losses_val, accs_val, losses_test, accs_test = [], [], [], [], [], []
     convGradsNorm = []
     train_loader, val_loader, test_loader = dataloaders['train'], dataloaders['val'], dataloaders['test']
-    for epoch in range(local_epoch):
+    for _ in range(local_epoch):
         model.train()
         total_loss = 0.
         ngraphs = 0
-
         acc_sum = 0
 
         for _, batch in enumerate(train_loader):
@@ -252,20 +370,22 @@ def train_gc_prox(model, dataloaders, optimizer, local_epoch, device, gconvNames
         total_loss /= ngraphs
         acc = acc_sum / ngraphs
 
-        loss_v, acc_v = eval_gc(model, val_loader, device)
-        loss_tt, acc_tt = eval_gc(model, test_loader, device)
+        loss_val, acc_val = eval_gc(model, val_loader, device)
+        loss_test, acc_test = eval_gc(model, test_loader, device)
 
         losses_train.append(total_loss)
         accs_train.append(acc)
-        losses_val.append(loss_v)
-        accs_val.append(acc_v)
-        losses_test.append(loss_tt)
-        accs_test.append(acc_tt)
+        losses_val.append(loss_val)
+        accs_val.append(acc_val)
+        losses_test.append(loss_test)
+        accs_test.append(acc_test)
 
         convGradsNorm.append(calc_gradsNorm(gconvNames, Ws))
 
-    return {'trainingLosses': losses_train, 'trainingAccs': accs_train, 'valLosses': losses_val, 'valAccs': accs_val,
-            'testLosses': losses_test, 'testAccs': accs_test, 'convGradsNorm': convGradsNorm}
+    return {'trainingLosses': losses_train, 'trainingAccs': accs_train, 
+            'valLosses': losses_val, 'valAccs': accs_val,
+            'testLosses': losses_test, 'testAccs': accs_test, 
+            'convGradsNorm': convGradsNorm}
 
 
 def eval_gc_prox(model, test_loader, device, gconvNames, mu, Wt):
