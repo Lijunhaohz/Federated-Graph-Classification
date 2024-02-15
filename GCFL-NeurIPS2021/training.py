@@ -220,7 +220,7 @@ def run_gcfl(clients: list,
         
     for idc in cluster_indices:
         server.cache_model(idc, clients[idc[0]].W, acc_clients) # cache the first client's weights in each cluster
-    # client-wise model
+    # cluster-wise model
 
     results = np.zeros([len(clients), len(server.model_cache)])
     for i, (idcs, W, accs) in enumerate(server.model_cache):

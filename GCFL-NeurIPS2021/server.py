@@ -143,8 +143,8 @@ class Server():
         for client in cluster:
             dW = {}
             for k in self.W.keys():
-                dW[k] = client.dW[k]
-                # dW[k] = client.dW[k] * client.train_size / sum([c.train_size for c in cluster])
+                # dW[k] = client.dW[k]
+                dW[k] = client.dW[k] * client.train_size / sum([c.train_size for c in cluster])
             cluster_dWs.append(flatten(dW))
 
         return torch.norm(torch.mean(torch.stack(cluster_dWs), dim=0)).item()
