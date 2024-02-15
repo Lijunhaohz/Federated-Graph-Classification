@@ -9,36 +9,85 @@ import setupGC
 from training import *
 
 
-def process_fedavg(clients: list, server: object) -> None:
-    '''
-    Entrance of running the FedAvg algorithm.
+def process_selftrain(clients, server, local_epoch):
+    print("Self-training ...")
+    df = pd.DataFrame()
+    allAccs = run_selftrain_GC(clients, server, local_epoch)
+    for k, v in allAccs.items():
+        df.loc[k, [f'train_acc', f'val_acc', f'test_acc']] = v
+    print(df)
+    if args.repeat is None:
+        outfile = os.path.join(outpath, f'accuracy_selftrain_GC{suffix}.csv')
+    else:
+        outfile = os.path.join(outpath, "repeats", f'{args.repeat}_accuracy_selftrain_GC{suffix}.csv')
+    df.to_csv(outfile)
+    print(f"Wrote to file: {outfile}")
 
-    :param clients: list of Client objects
-    :param server: Server object
-    '''
+
+def process_fedavg(clients, server):
     print("\nDone setting up FedAvg devices.")
+
     print("Running FedAvg ...")
-
-    outfile = os.path.join(outpath, f'accuracy_fedavg_GC.csv')
-
     frame = run_fedavg(clients, server, args.num_rounds, args.local_epoch, samp=None)
+    if args.repeat is None:
+        outfile = os.path.join(outpath, f'accuracy_fedavg_GC{suffix}.csv')
+    else:
+        outfile = os.path.join(outpath, "repeats", f'{args.repeat}_accuracy_fedavg_GC{suffix}.csv')
     frame.to_csv(outfile)
     print(f"Wrote to file: {outfile}")
 
 
-def process_gcfl(clients: list, server: object) -> None:
-    '''
-    Entrance of running the GCFL algorithm.
+def process_fedprox(clients, server, mu):
+    print("\nDone setting up FedProx devices.")
 
-    :param clients: list of Client objects
-    :param server: Server object
-    '''
+    print("Running FedProx ...")
+    frame = run_fedprox(clients, server, args.num_rounds, args.local_epoch, mu, samp=None)
+    if args.repeat is None:
+        outfile = os.path.join(outpath, f'accuracy_fedprox_mu{mu}_GC{suffix}.csv')
+    else:
+        outfile = os.path.join(outpath, "repeats", f'{args.repeat}_accuracy_fedprox_mu{mu}_GC{suffix}.csv')
+    frame.to_csv(outfile)
+    print(f"Wrote to file: {outfile}")
+
+
+def process_gcfl(clients, server):
     print("\nDone setting up GCFL devices.")
     print("Running GCFL ...")
 
-    outfile = os.path.join(outpath, f'accuracy_gcfl_GC.csv')
+    if args.repeat is None:
+        outfile = os.path.join(outpath, f'accuracy_gcfl_GC{suffix}.csv')
+    else:
+        outfile = os.path.join(outpath, "repeats", f'{args.repeat}_accuracy_gcfl_GC{suffix}.csv')
 
     frame = run_gcfl(clients, server, args.num_rounds, args.local_epoch, EPS_1, EPS_2)
+    frame.to_csv(outfile)
+    print(f"Wrote to file: {outfile}")
+
+
+def process_gcflplus(clients, server):
+    print("\nDone setting up GCFL devices.")
+    print("Running GCFL plus ...")
+
+    if args.repeat is None:
+        outfile = os.path.join(outpath, f'accuracy_gcflplus_GC{suffix}.csv')
+    else:
+        outfile = os.path.join(outpath, "repeats", f'{args.repeat}_accuracy_gcflplus_GC{suffix}.csv')
+
+    frame = run_gcflplus(clients, server, args.num_rounds, args.local_epoch, EPS_1, EPS_2, args.seq_length, args.standardize)
+    frame.to_csv(outfile)
+    print(f"Wrote to file: {outfile}")
+
+
+def process_gcflplusdWs(clients, server):
+    print("\nDone setting up GCFL devices.")
+    print("Running GCFL plus with dWs ...")
+
+    if args.repeat is None:
+        outfile = os.path.join(outpath, f'accuracy_gcflplusDWs_GC{suffix}.csv')
+    else:
+        outfile = os.path.join(outpath, "repeats", f'{args.repeat}_accuracy_gcflplusDWs_GC{suffix}.csv')
+
+    frame = run_gcflplus_dWs(clients, server, args.num_rounds, args.local_epoch, EPS_1, EPS_2, args.seq_length, args.standardize)
     frame.to_csv(outfile)
     print(f"Wrote to file: {outfile}")
 
@@ -97,10 +146,9 @@ if __name__ == '__main__':
     except IOError as msg:
         parser.error(str(msg))
 
-    print(args)
     seed_dataSplit = 123
 
-    #################### set seeds and devices ####################
+    # set seeds
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -112,33 +160,51 @@ if __name__ == '__main__':
     EPS_2 = args.epsilon2
 
     outbase = os.path.join(args.outbase, f'seqLen{args.seq_length}')
-    outpath = os.path.join(outbase, f"oneDS-nonOverlap")
+    if args.overlap and args.standardize:
+        outpath = os.path.join(outbase, f"standardizedDTW/oneDS-overlap")
+    elif args.overlap:
+        outpath = os.path.join(outbase, f"oneDS-overlap")
+    elif args.standardize:
+        outpath = os.path.join(outbase, f"standardizedDTW/oneDS-nonOverlap")
+    else:
+        outpath = os.path.join(outbase, f"oneDS-nonOverlap")
     outpath = os.path.join(outpath, f'{args.data_group}-{args.num_clients}clients', f'eps_{EPS_1}_{EPS_2}')
     Path(outpath).mkdir(parents=True, exist_ok=True)
     print(f"Output Path: {outpath}")
 
-    #################### distributed one dataset to multiple clients ####################
-    """ using original features """
-    print("Preparing data (original features) ...")
-    Path(os.path.join(outpath, 'repeats')).mkdir(parents=True, exist_ok=True)
+    """ distributed one dataset to multiple clients """
+
+    if not args.convert_x:
+        """ using original features """
+        suffix = ""
+        print("Preparing data (original features) ...")
+    else:
+        """ using node degree features """
+        suffix = "_degrs"
+        print("Preparing data (one-hot degree features) ...")
+
+    if args.repeat is not None:
+        Path(os.path.join(outpath, 'repeats')).mkdir(parents=True, exist_ok=True)
 
     splitedData, df_stats = setupGC.prepareData_oneDS(args.datapath, args.data_group, num_client=args.num_clients, batchSize=args.batch_size,
                                                       convert_x=args.convert_x, seed=seed_dataSplit, overlap=args.overlap)
-    print("Data prepared.")
+    print("Done")
 
-    #################### save statistics of data on clients ####################
-    outf = os.path.join(outpath, "repeats", f'{args.repeat}_stats_trainData.csv')
+    # save statistics of data on clients
+    if args.repeat is None:
+        outf = os.path.join(outpath, f'stats_trainData{suffix}.csv')
+    else:
+        outf = os.path.join(outpath, "repeats", f'{args.repeat}_stats_trainData{suffix}.csv')
     df_stats.to_csv(outf)
     print(f"Wrote to {outf}")
 
-    init_clients, _ = setupGC.setup_clients(splitedData, args)
-    init_server = setupGC.setup_server(args)
-
+    init_clients, init_server, init_idx_clients = setupGC.setup_devices(splitedData, args)
     print("\nDone setting up devices.")
 
-    #################### run FedAvg ####################
-    # process_fedavg(clients=copy.deepcopy(init_clients), server=copy.deepcopy(init_server))
-    
-    #################### run GCFL ####################
+    process_selftrain(clients=copy.deepcopy(init_clients), server=copy.deepcopy(init_server), local_epoch=50)
+    process_fedavg(clients=copy.deepcopy(init_clients), server=copy.deepcopy(init_server))
+    process_fedprox(clients=copy.deepcopy(init_clients), server=copy.deepcopy(init_server), mu=0.01)
     process_gcfl(clients=copy.deepcopy(init_clients), server=copy.deepcopy(init_server))
+    process_gcflplus(clients=copy.deepcopy(init_clients), server=copy.deepcopy(init_server))
+    process_gcflplusdWs(clients=copy.deepcopy(init_clients), server=copy.deepcopy(init_server))
 
