@@ -12,7 +12,7 @@ from torch_geometric.transforms import OneHotDegree
 from .gin_models import GIN, serverGIN
 from .server import Server
 from .client import Client_GC
-from .utils import get_maxDegree, get_stats, split_data, get_numGraphLabels
+from .utils import get_max_degree, get_stats, split_data, get_num_graph_labels
 
 
 def rand_split_chunk(
@@ -106,8 +106,8 @@ def load_single_dataset(
     else:
         tudataset = TUDataset(f"{datapath}/TUDataset", dataset)
         if convert_x:
-            maxdegree = get_maxDegree(tudataset)
-            tudataset = TUDataset(f"{datapath}/TUDataset", dataset, transform=OneHotDegree(maxdegree, cat=False))
+            max_degree = get_max_degree(tudataset)
+            tudataset = TUDataset(f"{datapath}/TUDataset", dataset, transform=OneHotDegree(max_degree, cat=False))
     
     graphs = [x for x in tudataset]
     print("Dataset name: ", dataset, " Total number of graphs: ", len(graphs))
@@ -129,14 +129,14 @@ def load_single_dataset(
 
         '''Data split'''
         ds_whole = chunks
-        ds_train, ds_val_test = split_data(ds_whole, train=0.8, test=0.2, shuffle=True, seed=seed)
-        ds_val, ds_test = split_data(ds_val_test, train=0.5, test=0.5, shuffle=True, seed=seed)
+        ds_train, ds_val_test = split_data(ds_whole, train_size=0.8, test_size=0.2, shuffle=True, seed=seed)
+        ds_val, ds_test = split_data(ds_val_test, train_size=0.5, test_size=0.5, shuffle=True, seed=seed)
 
         '''Generate data loader'''
         dataloader_train = DataLoader(ds_train, batch_size=batch_size, shuffle=True)
         dataloader_val = DataLoader(ds_val, batch_size=batch_size, shuffle=True)
         dataloader_test = DataLoader(ds_test, batch_size=batch_size, shuffle=True)
-        num_graph_labels = get_numGraphLabels(ds_train)
+        num_graph_labels = get_num_graph_labels(ds_train)
 
         '''Combine data'''
         splited_data[ds] = ({'train': dataloader_train, 
@@ -217,7 +217,7 @@ def load_multiple_dataset(
         else:
             tudataset = TUDataset(f"{datapath}/TUDataset", dataset)
             if convert_x:
-                max_degree = get_maxDegree(tudataset)
+                max_degree = get_max_degree(tudataset)
                 tudataset = TUDataset(f"{datapath}/TUDataset", dataset, transform=OneHotDegree(max_degree, cat=False))
 
         graphs = [x for x in tudataset]
@@ -225,15 +225,15 @@ def load_multiple_dataset(
 
         '''Split data'''
         if dataset_group.endswith('tiny'):
-            graphs, _ = split_data(graphs, train=150, shuffle=True, seed=seed)
-            graphs_train, graphs_val_test = split_data(graphs, test=0.2, shuffle=True, seed=seed)
-            graphs_val, graphs_test = split_data(graphs_val_test, train=0.5, test=0.5, shuffle=True, seed=seed)
+            graphs, _ = split_data(graphs, train_size=150, shuffle=True, seed=seed)
+            graphs_train, graphs_val_test = split_data(graphs, test_size=0.2, shuffle=True, seed=seed)
+            graphs_val, graphs_test = split_data(graphs_val_test, train_size=0.5, test_size=0.5, shuffle=True, seed=seed)
         else:
-            graphs_train, graphs_val_test = split_data(graphs, test=0.2, shuffle=True, seed=seed)
-            graphs_val, graphs_test = split_data(graphs_val_test, train=0.5, test=0.5, shuffle=True, seed=seed)
+            graphs_train, graphs_val_test = split_data(graphs, test_size=0.2, shuffle=True, seed=seed)
+            graphs_val, graphs_test = split_data(graphs_val_test, train_size=0.5, test_size=0.5, shuffle=True, seed=seed)
 
         num_node_features = graphs[0].num_node_features
-        num_graph_labels = get_numGraphLabels(graphs_train)
+        num_graph_labels = get_num_graph_labels(graphs_train)
 
         '''Generate data loader'''
         dataloader_train = DataLoader(graphs_train, batch_size=batch_size, shuffle=True)
