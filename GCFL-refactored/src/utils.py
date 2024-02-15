@@ -62,7 +62,7 @@ def split_data(graphs: list,
                train=None, 
                test=None, 
                shuffle: bool=True, 
-               seed: int=None) -> (list, list):
+               seed: int=None) -> tuple:
     '''
     Split the dataset into training and test sets.
 
@@ -99,7 +99,7 @@ def get_numGraphLabels(dataset: list) -> int:
     return len(s)
 
 
-def _get_avg_nodes_edges(graphs: list) -> (float, float):
+def _get_avg_nodes_edges(graphs: list) -> tuple:
     '''
     Calculate the average number of nodes and edges in the dataset.
 
@@ -123,7 +123,7 @@ def _get_avg_nodes_edges(graphs: list) -> (float, float):
 
 
 def get_stats(df: pd.DataFrame,
-              ds_client_name: str,
+              dataset: str,
               graphs_train: list,
               graphs_val: list=None, 
               graphs_test: list=None) -> pd.DataFrame:
@@ -132,7 +132,7 @@ def get_stats(df: pd.DataFrame,
 
     Args:
     - df: pd.DataFrame, the statistics of data.
-    - ds_client_name: str, the name of the dataset accompanied by the client id.
+    - dataset: str, the name of the dataset.
     - graphs_train: list of training graphs.
     - graphs_val: list of validation graphs.
     - graphs_test: list of testing graphs.
@@ -141,21 +141,21 @@ def get_stats(df: pd.DataFrame,
     - df: pd.DataFrame, the updated statistics of data.
     '''
     
-    df.loc[ds_client_name, "#graphs_train"] = len(graphs_train)
+    df.loc[dataset, "#graphs_train"] = len(graphs_train)
     avgNodes, avgEdges = _get_avg_nodes_edges(graphs_train)
-    df.loc[ds_client_name, 'avgNodes_train'] = avgNodes
-    df.loc[ds_client_name, 'avgEdges_train'] = avgEdges
+    df.loc[dataset, 'avgNodes_train'] = avgNodes
+    df.loc[dataset, 'avgEdges_train'] = avgEdges
 
     if graphs_val:
-        df.loc[ds_client_name, '#graphs_val'] = len(graphs_val)
+        df.loc[dataset, '#graphs_val'] = len(graphs_val)
         avgNodes, avgEdges = _get_avg_nodes_edges(graphs_val)
-        df.loc[ds_client_name, 'avgNodes_val'] = avgNodes
-        df.loc[ds_client_name, 'avgEdges_val'] = avgEdges
+        df.loc[dataset, 'avgNodes_val'] = avgNodes
+        df.loc[dataset, 'avgEdges_val'] = avgEdges
 
     if graphs_test:
-        df.loc[ds_client_name, '#graphs_test'] = len(graphs_test)
+        df.loc[dataset, '#graphs_test'] = len(graphs_test)
         avgNodes, avgEdges = _get_avg_nodes_edges(graphs_test)
-        df.loc[ds_client_name, 'avgNodes_test'] = avgNodes
-        df.loc[ds_client_name, 'avgEdges_test'] = avgEdges
+        df.loc[dataset, 'avgNodes_test'] = avgNodes
+        df.loc[dataset, 'avgEdges_test'] = avgEdges
 
     return df

@@ -5,7 +5,7 @@ import torch
 from pathlib import Path
 import copy
 
-import src.setupGC as setupGC
+import src.data_process as data_process
 from src.training import *
 
 
@@ -122,8 +122,10 @@ if __name__ == '__main__':
     print("Preparing data (original features) ...")
     Path(os.path.join(outpath, 'repeats')).mkdir(parents=True, exist_ok=True)
 
-    splitedData, df_stats = setupGC.prepareData_oneDS(args.datapath, args.data_group, num_client=args.num_clients, batchSize=args.batch_size,
-                                                      convert_x=args.convert_x, seed=seed_dataSplit, overlap=args.overlap)
+    splitedData, df_stats = data_process.load_single_dataset(
+        args.datapath, args.data_group, num_client=args.num_clients, batch_size=args.batch_size,
+        convert_x=args.convert_x, seed=seed_dataSplit, overlap=args.overlap
+    )
     print("Data prepared.")
 
     #################### save statistics of data on clients ####################
@@ -131,8 +133,8 @@ if __name__ == '__main__':
     df_stats.to_csv(outf)
     print(f"Wrote to {outf}")
 
-    init_clients, _ = setupGC.setup_clients(splitedData, args)
-    init_server = setupGC.setup_server(args)
+    init_clients, _ = data_process.setup_clients(splitedData, args)
+    init_server = data_process.setup_server(args)
 
     print("\nDone setting up devices.")
 

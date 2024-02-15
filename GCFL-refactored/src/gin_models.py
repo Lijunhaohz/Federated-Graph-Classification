@@ -94,7 +94,7 @@ class GIN(torch.nn.Module):
         self.post = torch.nn.Sequential(torch.nn.Linear(nhid, nhid), torch.nn.ReLU())
         self.readout = torch.nn.Sequential(torch.nn.Linear(nhid, nclass))
 
-    def forward(self, data: torch_geometric.data.Data) -> torch.Tensor:
+    def forward(self, data) -> torch.Tensor:
         '''
         Forward pass of the GIN model, which takes in the input graph data and returns the 
         model's prediction.
