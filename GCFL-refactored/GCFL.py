@@ -5,8 +5,8 @@ import torch
 from pathlib import Path
 import copy
 
-import setupGC
-from training import *
+import src.setupGC as setupGC
+from src.training import *
 
 
 def process_fedavg(clients: list, server: object) -> None:

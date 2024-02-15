@@ -11,7 +11,7 @@ if [ ! -d "logs/${data_group}" ]; then
     mkdir -p logs/${data_group}
 fi
 
-nohup python -u GCFL_trial.py \
+nohup python -u GCFL.py \
     --repeat ${repeat_} \
     --data_group ${data_group} \
     --num_clients ${client_} \
