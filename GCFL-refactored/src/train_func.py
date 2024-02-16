@@ -2,20 +2,28 @@ import pandas as pd
 import numpy as np
 
 
-def run_selftrain_GC(clients: list,
-                     server: object,
-                     local_epoch: int) -> dict:
+def train_selftrain_GC(
+        clients: list,
+        server: object,
+        local_epoch: int
+) -> dict:
     '''
     Run the training and testing process of self-training algorithm.
     It only trains the model locally, and does not perform weights aggregation.
 
-    Args:
-        clients: list of clients
-        server: server object
-        local_epoch: number of local epochs
+    Parameters
+    ----------
+    clients: list
+        List of clients
+    server: object
+        Server object
+    local_epoch: int
+        Number of local epochs
 
-    Returns:
-        allAccs: dictionary of test accuracies
+    Returns
+    ------- 
+    all_accs: dict
+        Dictionary with training and test accuracies for each client
     '''
     # all clients are initialized with the same weights
     for client in clients:
@@ -32,27 +40,38 @@ def run_selftrain_GC(clients: list,
     return all_accs
 
 
-def run_fedavg(clients: list,
-               server: object,
-               COMMUNICATION_ROUNDS: int,
-               local_epoch: int,
-               samp: str = None,
-               frac: float = 1.0) -> pd.DataFrame:
+def train_fedavg(
+        clients: list,
+        server: object,
+        communication_rounds: int,
+        local_epoch: int,
+        samp: str = None,
+        frac: float = 1.0
+) -> pd.DataFrame:
     '''
     Run the training and testing process of FedAvg algorithm.
     It trains the model locally, aggregates the weights to the server, 
     and downloads the global model within each communication round.
 
-    Args:
-        clients: list of clients
-        server: server object
-        COMMUNICATION_ROUNDS: number of communication rounds
-        local_epoch: number of local epochs
-        samp: sampling method
-        frac: fraction of clients to sample
-
-    Returns:
-        frame: pandas dataframe with test accuracies
+    Parameters
+    ----------
+    clients: list
+        List of clients
+    server: object
+        Server object
+    communication_rounds: int
+        Number of communication rounds
+    local_epoch: int
+        Number of local epochs
+    samp: str
+        Sampling method
+    frac: float
+        Fraction of clients to sample
+    
+    Returns
+    -------
+    frame: pd.DataFrame
+        Pandas dataframe with test accuracies
     '''
 
     for client in clients:
@@ -66,7 +85,7 @@ def run_fedavg(clients: list,
     # communication rounds => { local training (#epochs) -> aggregation -> download }
     #                                |
     #                           training_stats
-    for c_round in range(1, COMMUNICATION_ROUNDS + 1):
+    for c_round in range(1, communication_rounds + 1):
         if (c_round) % 50 == 0:
             print(f"  > round {c_round}")   # print the current round every 50 rounds
 
@@ -97,29 +116,39 @@ def run_fedavg(clients: list,
     return frame
 
 
-def run_fedprox(clients: list,
-                server: object,
-                COMMUNICATION_ROUNDS: int, 
-                local_epoch: int,
-                mu: float,
-                samp: str = None,
-                frac: float = 1.0) -> pd.DataFrame:
+def train_fedprox(
+        clients: list,
+        server: object,
+        communication_rounds: int, 
+        local_epoch: int,
+        mu: float,
+        samp: str = None,
+        frac: float = 1.0
+) -> pd.DataFrame:
     '''
     Run the training and testing process of FedProx algorithm.
     It trains the model locally, aggregates the weights to the server,
     and downloads the global model within each communication round.
 
-    Args:
-        clients: list of clients
-        server: server object
-        COMMUNICATION_ROUNDS: number of communication rounds
-        local_epoch: number of local epochs
-        mu: proximal term
-        samp: sampling method
-        frac: fraction of clients to sample
+    Parameters
+    ----------
+    clients: list
+        List of clients
+    server: object
+        Server object
+    communication_rounds: int
+        Number of communication rounds
+    local_epoch: int
+        Number of local epochs
+    mu: float
+        Proximal term
+    samp: str
+        Sampling method
+    frac: float
+        Fraction of clients to sample
 
     Returns:
-        frame: pandas dataframe with test accuracies
+        Frame: pandas dataframe with test accuracies
     '''
     for client in clients:
         client.download_from_server(server)
@@ -127,7 +156,7 @@ def run_fedprox(clients: list,
     if samp is None:
         frac = 1.0
 
-    for c_round in range(1, COMMUNICATION_ROUNDS + 1):
+    for c_round in range(1, communication_rounds + 1):
         if (c_round) % 50 == 0:
             print(f"  > round {c_round}")
 
@@ -160,32 +189,46 @@ def run_fedprox(clients: list,
     return frame
 
 
-def run_gcfl(clients: list, 
-             server: object,
-             COMMUNICATION_ROUNDS: int,
-             local_epoch : int,
-             EPS_1: float,
-             EPS_2: float) -> pd.DataFrame:
+def train_gcfl(
+        clients: list, 
+        server: object,
+        communication_rounds: int,
+        local_epoch : int,
+        EPS_1: float,
+        EPS_2: float
+) -> pd.DataFrame:
     '''
     Run the GCFL algorithm.
+    The GCFL algorithm is a cluster-based federated learning algorithm, which aggregates the weights of the clients
+    in each cluster, and dynamically splits the clusters during the training process.
 
-    Args:
-        clients: list of clients
-        server: server object
-        COMMUNICATION_ROUNDS: number of communication rounds
-        local_epoch: number of local epochs
-        EPS_1: threshold for mean update norm
-        EPS_2: threshold for max update norm
+    Parameters
+    ----------
+    clients: list
+        List of clients
+    server: object
+        Server object
+    communication_rounds: int
+        Number of communication rounds
+    local_epoch: int
+        Number of local epochs
+    EPS_1: float
+        Threshold for mean update norm
+    EPS_2: float
+        Threshold for max update norm
 
-    Returns:
-        frame: pandas dataframe with test accuracies
+    Returns
+    -------
+    frame: pandas.DataFrame
+        Pandas dataframe with test accuracies
+
     '''
 
     cluster_indices = [np.arange(len(clients)).astype("int")]   # cluster_indices: [[0, 1, ...]]
     client_clusters = [[clients[i] for i in idcs] for idcs in cluster_indices]   # initially there is only one cluster
 
     ############### COMMUNICATION ROUNDS ###############
-    for c_round in range(1, COMMUNICATION_ROUNDS + 1):
+    for c_round in range(1, communication_rounds + 1):
         if (c_round) % 50 == 0:
             print(f"  > round {c_round}")
         if c_round == 1:
@@ -237,29 +280,42 @@ def run_gcfl(clients: list,
     return frame
 
 
-def run_gcflplus(clients: list, 
-                 server: object,
-                 COMMUNICATION_ROUNDS: int,
-                 local_epoch: int,
-                 EPS_1: float,
-                 EPS_2: float,
-                 seq_length: int,
-                 standardize: bool) -> pd.DataFrame:
+def train_gcfl_plus(
+        clients: list, 
+        server: object,
+        communication_rounds: int,
+        local_epoch: int,
+        EPS_1: float,
+        EPS_2: float,
+        seq_length: int,
+        standardize: bool
+) -> pd.DataFrame:
     '''
     Run the GCFL+ algorithm.
 
-    Args:
-        clients: list of clients
-        server: server object
-        COMMUNICATION_ROUNDS: number of communication rounds
-        local_epoch: number of local epochs
-        EPS_1: threshold for mean update norm
-        EPS_2: threshold for max update norm
-        seq_length: the length of the gradient norm sequence
-        standardize: whether to standardize the gradient norm sequence
+    Parameters
+    ----------
+    clients: list
+        List of clients
+    server: object
+        Server object
+    communication_rounds: int
+        Number of communication rounds
+    local_epoch: int
+        Number of local epochs
+    EPS_1: float
+        Threshold for mean update norm
+    EPS_2: float
+        Threshold for max update norm
+    seq_length: int
+        The length of the gradient norm sequence
+    standardize: bool
+        Whether to standardize the distance matrix
 
-    Returns:
-        frame: pandas dataframe with test accuracies
+    Returns
+    -------
+    frame: pandas.DataFrame
+        Pandas dataframe with test accuracies
     '''
     cluster_indices = [np.arange(len(clients)).astype("int")]
     client_clusters = [[clients[i] for i in idcs] for idcs in cluster_indices]
@@ -268,7 +324,7 @@ def run_gcflplus(clients: list,
     for client in clients:
         client.download_from_server(server)
 
-    for c_round in range(1, COMMUNICATION_ROUNDS + 1):
+    for c_round in range(1, communication_rounds + 1):
         if (c_round) % 50 == 0:
             print(f"  > round {c_round}")
         if c_round == 1:
@@ -326,7 +382,43 @@ def run_gcflplus(clients: list,
     return frame
 
 
-def run_gcflplus_dWs(clients, server, COMMUNICATION_ROUNDS, local_epoch, EPS_1, EPS_2, seq_length, standardize):
+def train_gcfl_plus_dWs(
+        clients: list,
+        server: object,
+        communication_rounds: int,
+        local_epoch: int,
+        EPS_1: float,
+        EPS_2: float,
+        seq_length: int, 
+        standardize: bool
+) -> pd.DataFrame:
+    '''
+    Run the GCFL+ algorithm with the gradient norms of the weights.
+
+    Parameters
+    ----------
+    clients: list
+        List of clients
+    server: object
+        Server object
+    communication_rounds: int
+        Number of communication rounds
+    local_epoch: int
+        Number of local epochs
+    EPS_1: float
+        Threshold for mean update norm
+    EPS_2: float
+        Threshold for max update norm
+    seq_length: int
+        The length of the gradient norm sequence
+    standardize: bool
+        Whether to standardize the distance matrix
+
+    Returns
+    -------
+    frame: pandas.DataFrame
+        Pandas dataframe with test accuracies
+    '''
     cluster_indices = [np.arange(len(clients)).astype("int")]
     client_clusters = [[clients[i] for i in idcs] for idcs in cluster_indices]
 
@@ -334,7 +426,7 @@ def run_gcflplus_dWs(clients, server, COMMUNICATION_ROUNDS, local_epoch, EPS_1, 
     for client in clients:
         client.download_from_server(server)
 
-    for c_round in range(1, COMMUNICATION_ROUNDS + 1):
+    for c_round in range(1, communication_rounds + 1):
         if (c_round) % 50 == 0:
             print(f"  > round {c_round}")
         if c_round == 1:

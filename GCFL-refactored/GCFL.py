@@ -6,7 +6,7 @@ from pathlib import Path
 import copy
 
 import src.data_process as data_process
-from src.training import *
+from src.train_func import *
 
 
 def process_fedavg(clients: list, server: object) -> None:
@@ -38,7 +38,7 @@ def process_gcfl(clients: list, server: object) -> None:
 
     outfile = os.path.join(outpath, f'accuracy_gcfl_GC.csv')
 
-    frame = run_gcfl(clients, server, args.num_rounds, args.local_epoch, EPS_1, EPS_2)
+    frame = train_gcfl(clients, server, args.num_rounds, args.local_epoch, EPS_1, EPS_2)
     frame.to_csv(outfile)
     print(f"Wrote to file: {outfile}")
 
