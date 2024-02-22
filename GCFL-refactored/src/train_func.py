@@ -92,7 +92,7 @@ def run_GC_fedavg(
         if c_round == 1:
             selected_clients = clients
         else:
-            selected_clients = server.randomSample_clients(clients, frac)
+            selected_clients = server.random_sample_clients(clients, frac)
             # if samp = None, frac=1.0, then all clients are selected
 
         for client in selected_clients:             # only get weights of graphconv layers
@@ -163,7 +163,7 @@ def run_GC_fedprox(
         if c_round == 1:
             selected_clients = clients
         else:
-            selected_clients = server.randomSample_clients(clients, frac)
+            selected_clients = server.random_sample_clients(clients, frac)
 
         for client in selected_clients:
             client.local_train(local_epoch=local_epoch, train_option='prox', mu=mu)    # Different from FedAvg
@@ -235,7 +235,7 @@ def run_GC_gcfl(
             for client in clients:
                 client.update_params(server)
 
-        participating_clients = server.randomSample_clients(clients, frac=1.0)
+        participating_clients = server.random_sample_clients(clients, frac=1.0)
         for client in participating_clients:
             client.local_train(local_epoch=local_epoch, train_option='gcfl')   # local training
             client.reset_params()                              # reset the gradients (discard the final gradients)
@@ -331,7 +331,7 @@ def run_GC_gcfl_plus(
             for client in clients:
                 client.update_params(server)
 
-        participating_clients = server.randomSample_clients(clients, frac=1.0)
+        participating_clients = server.random_sample_clients(clients, frac=1.0)
 
         for client in participating_clients:
             client.local_train(local_epoch=local_epoch, train_option='gcfl')
@@ -433,7 +433,7 @@ def run_GC_gcfl_plus_dWs(
             for client in clients:
                 client.update_params(server)
 
-        participating_clients = server.randomSample_clients(clients, frac=1.0)
+        participating_clients = server.random_sample_clients(clients, frac=1.0)
 
         for client in participating_clients:
             client.local_train(local_epoch=local_epoch, train_option='gcfl')

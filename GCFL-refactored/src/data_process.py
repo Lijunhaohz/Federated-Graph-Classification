@@ -10,9 +10,9 @@ from torch_geometric.data import DataLoader
 from torch_geometric.transforms import OneHotDegree
 
 from .gin_models import GIN, serverGIN
-from .server_class import Server
+from .server_class import ServerGC
 from .trainer_class import Trainer_GC
-from .utils import get_max_degree, get_stats, split_data, get_num_graph_labels
+from .utils_gc import get_max_degree, get_stats, split_data, get_num_graph_labels
 
 
 def rand_split_chunk(
@@ -309,7 +309,7 @@ def setup_clients(splitedData: dict,
     return clients, idx_clients
 
 
-def setup_server(args: argparse.ArgumentParser=None) -> Server:
+def setup_server(args: argparse.ArgumentParser=None) -> ServerGC:
     '''
     Setup server.
 
@@ -321,7 +321,7 @@ def setup_server(args: argparse.ArgumentParser=None) -> Server:
     '''
 
     smodel = serverGIN(nlayer=args.nlayer, nhid=args.hidden)
-    server = Server(smodel, args.device)
+    server = ServerGC(smodel, args.device)
     return server
 
 

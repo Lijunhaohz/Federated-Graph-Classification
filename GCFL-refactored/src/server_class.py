@@ -5,30 +5,59 @@ import networkx as nx
 from dtaidistance import dtw
 
 
-class Server():
-    def __init__(self, model, device):
+class ServerGC():
+    '''
+    This is a server class for federated graph classification which is responsible for aggregating model parameters from different clients, 
+    updating the central model, and then broadcasting the updated model parameters back to the trainers.
+
+    Parameters
+    ----------
+    model: torch.nn.Module
+        The model to be trained.
+    device: torch.device
+        The device to run the model on.
+
+    Attributes
+    ----------
+    model: serverGIN
+        The central GIN model to be trained.
+    W: dict
+        Dictionary containing the model parameters.
+    model_cache: list
+        List of tuples, where each tuple contains the model parameters and the accuracies of the clients.
+    '''
+    def __init__(self, model: torch.nn.Module, device: torch.device) -> None:
         self.model = model.to(device)
         self.W = {key: value for key, value in self.model.named_parameters()}
         self.model_cache = []
 
-
-    def randomSample_clients(self, all_clients: list, frac: float) -> list:
+    ########### Public functions ###########
+    def random_sample_clients(self, all_clients: list, frac: float) -> list:
         '''
         Randomly sample a fraction of clients.
 
-        :param all_clients: list of Client objects
-        :param frac: float, fraction of clients to sample
+        Parameters
+        ----------
+        all_clients: list
+            list of Client objects
+        frac: float
+            fraction of clients to be sampled
 
-        :return: list of Client objects
+        Returns
+        -------
+        (sampled_clients): list
+            list of Client objects
         '''
         return random.sample(all_clients, int(len(all_clients) * frac))
-
 
     def aggregate_weights(self, selected_clients: list) -> None:
         '''
         Perform weighted aggregation among selected clients. The weights are the number of training samples.
 
-        :param selected_clients: list of Client objects
+        Parameters
+        ----------
+        selected_clients: list
+            list of Client objects
         '''
         total_size = 0
         for client in selected_clients:
@@ -39,14 +68,19 @@ class Server():
             accumulate = torch.stack([torch.mul(client.W[k].data, client.train_size) for client in selected_clients])
             self.W[k].data = torch.div(torch.sum(accumulate, dim=0), total_size).clone()
 
-
     def compute_pairwise_similarities(self, clients: list) -> np.ndarray:
         '''
         This function computes the pairwise cosine similarities between the gradients of the clients.
 
-        :param clients: list of Client objects
+        Parameters
+        ----------
+        clients: list
+            list of Client objects
 
-        :return: np.ndarray of shape (len(clients), len(clients))
+        Returns
+        -------
+        np.ndarray
+            2D np.ndarray of shape len(clients) * len(clients), which contains the pairwise cosine similarities
         '''
         client_dWs = []
         for client in clients:
@@ -55,11 +89,28 @@ class Server():
                 dW[k] = client.dW[k]
             client_dWs.append(dW)
 
-        return pairwise_angles(client_dWs)
+        return self.__pairwise_angles(client_dWs)
 
+    def compute_pairwise_distances(
+            self, 
+            seqs: list, 
+            standardize: bool = False
+    ) -> np.ndarray:
+        '''
+        This function computes the pairwise distances between the gradient norm sequences of the clients.
 
-    def compute_pairwise_distances(self, seqs, standardize=False):
-        """ computes DTW distances """
+        Parameters
+        ----------
+        seqs: list
+            list of 1D np.ndarray, where each 1D np.ndarray contains the gradient norm sequence of a client
+        standardize: bool
+            whether to standardize the distance matrix
+
+        Returns
+        -------
+        distances: np.ndarray
+            2D np.ndarray of shape len(seqs) * len(seqs), which contains the pairwise distances
+        '''
         if standardize:
             # standardize to only focus on the trends
             seqs = np.array(seqs)
@@ -69,15 +120,21 @@ class Server():
             distances = dtw.distance_matrix(seqs)
         return distances
 
-
     def min_cut(self, similarity: np.ndarray, idc: list) -> tuple:
         '''
         This function computes the minimum cut of the graph defined by the pairwise cosine similarities.
 
-        :param similarity: 2D np.ndarray of shape len(clients) * len(clients)
-        :param idc: list of client indices
+        Parameters
+        ----------
+        similarity: np.ndarray
+            2D np.ndarray of shape len(clients) * len(clients), which contains the pairwise cosine similarities
+        idc: list
+            list of client indices
 
-        :return: tuple of two lists, each containing the indices of the clients in the two clusters
+        Returns
+        -------
+        (c1, c2): tuple
+            tuple of two lists, where each list contains the indices of the clients in a cluster
         '''
         g = nx.Graph()
         for i in range(len(similarity)):
@@ -88,13 +145,15 @@ class Server():
         c2 = np.array([idc[x] for x in partition[1]])
         return c1, c2
 
-
     def aggregate_clusterwise(self, client_clusters: list) -> None:
         '''
         Perform weighted aggregation among the clients in each cluster. 
         The weights are the number of training samples.
 
-        :param client_clusters: list of lists of Client objects
+        Parameters
+        ----------
+        client_clusters: list
+            list of lists, where each list contains the Client objects in a cluster
         '''
         for cluster in client_clusters:     # cluster is a list of Client objects
             targs, sours = [], []
@@ -109,35 +168,37 @@ class Server():
                 sours.append((dW, client.train_size))
                 total_size += client.train_size
             # pass train_size, and weighted aggregate
-            reduce_add_average(targets=targs, sources=sours, total_size=total_size)
-
+            self.__reduce_add_average(targets=targs, sources=sours, total_size=total_size)
 
     def compute_max_update_norm(self, cluster: list) -> float:
         '''
         Compute the maximum update norm (i.e., dW) among the clients in the cluster.
+        This function is used to determine whether the cluster is ready to be split.
 
-        :param cluster: list of Client objects
-
-        :return: float, maximum update norm
+        Parameters
+        ----------
+        cluster: list
+            list of Client objects
         '''
         max_dW = -np.inf
         for client in cluster:
             dW = {}
             for k in self.W.keys():
                 dW[k] = client.dW[k]
-            curr_dW = torch.norm(flatten(dW)).item()
+            curr_dW = torch.norm(self.__flatten(dW)).item()
             max_dW = max(max_dW, curr_dW)
 
         return max_dW
     
-
     def compute_mean_update_norm(self, cluster: list) -> float:
         '''
         Compute the mean update norm (i.e., dW) among the clients in the cluster.
+        This function is used to determine whether the cluster is ready to be split.
 
-        :param cluster: list of Client objects
-
-        :return: float, mean update norm
+        Parameters
+        ----------
+        cluster: list
+            list of Client objects
         '''
         cluster_dWs = []
         for client in cluster:
@@ -145,67 +206,93 @@ class Server():
             for k in self.W.keys():
                 # dW[k] = client.dW[k]
                 dW[k] = client.dW[k] * client.train_size / sum([c.train_size for c in cluster])
-            cluster_dWs.append(flatten(dW))
+            cluster_dWs.append(self.__flatten(dW))
 
         return torch.norm(torch.mean(torch.stack(cluster_dWs), dim=0)).item()
 
-
-    def cache_model(self, 
-                    idcs: list,
-                    params: dict,
-                    accuracies: list) -> None:
+    def cache_model(
+            self, 
+            idcs: list,
+            params: dict,
+            accuracies: list
+    ) -> None:
         '''
         Cache the model parameters and accuracies of the clients.
 
-        :param idcs: list of client indices
-        :param params: dictionary containing the model parameters
-        :param accuracies: list of client accuracies
+        Parameters
+        ----------
+        idcs: list
+            list of client indices
+        params: dict
+            dictionary containing the model parameters of the clients
+        accuracies: list
+            list of accuracies of the clients
         '''
         self.model_cache += [(idcs,
                               {name: params[name].data.clone() for name in params},
                               [accuracies[i] for i in idcs])]
+        
+    ########### Private functions ###########
+    def __pairwise_angles(self, sources: list) -> np.ndarray:
+        '''
+        Compute the pairwise cosine similarities between the gradients of the clients into a 2D matrix.
+        
+        Parameters
+        ----------
+        sources: list
+            list of dictionaries, where each dictionary contains the gradients of a client
 
+        Returns
+        -------
+        np.ndarray
+            2D np.ndarray of shape len(sources) * len(sources), which contains the pairwise cosine similarities
+        '''
+        angles = torch.zeros([len(sources), len(sources)])
+        for i, source1 in enumerate(sources):
+            for j, source2 in enumerate(sources):
+                s1 = self.__flatten(source1)
+                s2 = self.__flatten(source2)
+                angles[i, j] = torch.true_divide(
+                    torch.sum(s1 * s2), max(torch.norm(s1) * torch.norm(s2), 1e-12)) + 1
 
-def flatten(source: dict) -> torch.Tensor:
-    '''
-    Flatten the gradients of a client into a 1D tensor.
+        return angles.numpy()
 
-    :param source: dictionary containing the gradients of a client
+    def __flatten(self, source: dict) -> torch.Tensor:
+        '''
+        Flatten the gradients of a client into a 1D tensor.
 
-    :return: torch.Tensor
-    '''
-    return torch.cat([value.flatten() for value in source.values()])
+        Parameters
+        ----------
+        source: dict
+            dictionary containing the gradients of a client
 
+        Returns
+        -------
+        (flattend_gradients): torch.Tensor
+            1D tensor containing the flattened gradients
+        '''
+        return torch.cat([value.flatten() for value in source.values()])
 
-def pairwise_angles(sources: list) -> np.ndarray:
-    '''
-    Compute the pairwise cosine similarities between the gradients of the clients into a 2D matrix.
-    
-    :param sources: list of dictionaries, where each dictionary contains the gradients of a client
+    def __reduce_add_average(
+            self, 
+            targets: list, 
+            sources: list, 
+            total_size: int
+    ) -> None:
+        '''
+        Perform weighted aggregation from the sources to the targets. The weights are the number of training samples.
 
-    :return: np.ndarray of shape (len(sources), len(sources))
-    '''
-    angles = torch.zeros([len(sources), len(sources)])
-    for i, source1 in enumerate(sources):
-        for j, source2 in enumerate(sources):
-            s1 = flatten(source1)
-            s2 = flatten(source2)
-            angles[i, j] = torch.true_divide(
-                torch.sum(s1 * s2), max(torch.norm(s1) * torch.norm(s2), 1e-12)) + 1
-
-    return angles.numpy()
-
-
-def reduce_add_average(targets: list, sources: list, total_size: int) -> None:
-    '''
-    Perform weighted aggregation from the sources to the targets. The weights are the number of training samples.
-
-    :param targets: list of dictionaries, where each dictionary contains the model parameters of a client
-    :param sources: list of tuples, where each tuple contains the gradients and the number of training samples of a client
-    :param total_size: int, total number of training samples in the cluster
-    '''
-    for target in targets:
-        for name in target:
-            weighted_stack = torch.stack([torch.mul(source[0][name].data, source[1]) for source in sources])
-            tmp = torch.div(torch.sum(weighted_stack, dim=0), total_size).clone()
-            target[name].data += tmp
+        Parameters
+        ----------
+        targets: list
+            list of dictionaries, where each dictionary contains the model parameters of a client
+        sources: list
+            list of tuples, where each tuple contains the gradients and the number of training samples of a client
+        total_size: int
+            total number of training samples
+        '''
+        for target in targets:
+            for name in target:
+                weighted_stack = torch.stack([torch.mul(source[0][name].data, source[1]) for source in sources])
+                tmp = torch.div(torch.sum(weighted_stack, dim=0), total_size).clone()
+                target[name].data += tmp
