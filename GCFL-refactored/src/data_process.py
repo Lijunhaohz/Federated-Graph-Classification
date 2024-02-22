@@ -10,8 +10,8 @@ from torch_geometric.data import DataLoader
 from torch_geometric.transforms import OneHotDegree
 
 from .gin_models import GIN, serverGIN
-from .server import Server
-from .client import Client_GC
+from .server_class import Server
+from .trainer_class import Trainer_GC
 from .utils import get_max_degree, get_stats, split_data, get_num_graph_labels
 
 
@@ -294,13 +294,15 @@ def setup_clients(splitedData: dict,
                                      weight_decay=args.weight_decay)
 
         '''build client'''
-        client = Client_GC(model=cmodel_gc,                     # GIN model
-                           client_id=idx,                       # client id
-                           client_name=dataset_client_name,     # client name
-                           train_size=train_size,               # training size
-                           dataLoader=dataloaders,              # data loader
-                           optimizer=optimizer,                 # optimizer
-                           args=args)
+        client = Trainer_GC(
+            model=cmodel_gc,                     # GIN model
+            client_id=idx,                       # client id
+            client_name=dataset_client_name,     # client name
+            train_size=train_size,               # training size
+            dataLoader=dataloaders,              # data loader
+            optimizer=optimizer,                 # optimizer
+            args=args
+        )
 
         clients.append(client)
 

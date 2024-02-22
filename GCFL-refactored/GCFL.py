@@ -21,7 +21,7 @@ def process_fedavg(clients: list, server: object) -> None:
 
     outfile = os.path.join(outpath, f'accuracy_fedavg_GC.csv')
 
-    frame = run_fedavg(clients, server, args.num_rounds, args.local_epoch, samp=None)
+    frame = run_GC_fedavg(clients, server, args.num_rounds, args.local_epoch, samp=None)
     frame.to_csv(outfile)
     print(f"Wrote to file: {outfile}")
 
@@ -38,7 +38,7 @@ def process_gcfl(clients: list, server: object) -> None:
 
     outfile = os.path.join(outpath, f'accuracy_gcfl_GC.csv')
 
-    frame = train_gcfl(clients, server, args.num_rounds, args.local_epoch, EPS_1, EPS_2)
+    frame = run_GC_gcfl(clients, server, args.num_rounds, args.local_epoch, EPS_1, EPS_2)
     frame.to_csv(outfile)
     print(f"Wrote to file: {outfile}")
 

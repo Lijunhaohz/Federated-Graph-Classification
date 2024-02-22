@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 
-def train_selftrain_GC(
+def run_GC_selftrain(
         clients: list,
         server: object,
         local_epoch: int
@@ -31,16 +31,16 @@ def train_selftrain_GC(
 
     all_accs = {}
     for client in clients:
-        client.local_train(local_epoch)
+        client.local_train(local_epoch=local_epoch)
 
-        _, acc = client.evaluate()
+        _, acc = client.local_test()
         all_accs[client.name] = [client.train_stats['trainingAccs'][-1], client.train_stats['valAccs'][-1], acc]
         print("  > {} done.".format(client.name))
 
     return all_accs
 
 
-def train_fedavg(
+def run_GC_fedavg(
         clients: list,
         server: object,
         communication_rounds: int,
@@ -75,7 +75,7 @@ def train_fedavg(
     '''
 
     for client in clients:
-        client.download_from_server(server) # download the global model
+        client.update_params(server) # download the global model
     
     if samp is None:
         frac = 1.0
@@ -96,15 +96,15 @@ def train_fedavg(
             # if samp = None, frac=1.0, then all clients are selected
 
         for client in selected_clients:             # only get weights of graphconv layers
-            client.local_train(local_epoch)         # train the local model
+            client.local_train(local_epoch=local_epoch)         # train the local model
 
         server.aggregate_weights(selected_clients)  # aggregate the weights of selected clients
         for client in selected_clients:
-            client.download_from_server(server)     # re-download the global server
+            client.update_params(server)     # re-download the global server
 
     frame = pd.DataFrame()
     for client in clients:
-        _, acc = client.evaluate()                  # Final evaluation
+        _, acc = client.local_test()                 # Final evaluation
         frame.loc[client.name, 'test_acc'] = acc
 
     def highlight_max(s):
@@ -116,7 +116,7 @@ def train_fedavg(
     return frame
 
 
-def train_fedprox(
+def run_GC_fedprox(
         clients: list,
         server: object,
         communication_rounds: int, 
@@ -151,7 +151,7 @@ def train_fedprox(
         Frame: pandas dataframe with test accuracies
     '''
     for client in clients:
-        client.download_from_server(server)
+        client.download_from_update_paramsserver(server)
 
     if samp is None:
         frac = 1.0
@@ -166,18 +166,18 @@ def train_fedprox(
             selected_clients = server.randomSample_clients(clients, frac)
 
         for client in selected_clients:
-            client.local_train_prox(local_epoch, mu)    # Different from FedAvg
+            client.local_train(local_epoch=local_epoch, train_option='prox', mu=mu)    # Different from FedAvg
 
         server.aggregate_weights(selected_clients)
         for client in selected_clients:
-            client.download_from_server(server)
+            client.update_params(server)
 
             # cache the aggregated weights for next round
             client.cache_weights()
 
     frame = pd.DataFrame()
     for client in clients:
-        _, acc = client.evaluate()
+        _, acc = client.local_test()
         frame.loc[client.name, 'test_acc'] = acc
 
     def highlight_max(s):
@@ -189,7 +189,7 @@ def train_fedprox(
     return frame
 
 
-def train_gcfl(
+def run_GC_gcfl(
         clients: list, 
         server: object,
         communication_rounds: int,
@@ -233,12 +233,12 @@ def train_gcfl(
             print(f"  > round {c_round}")
         if c_round == 1:
             for client in clients:
-                client.download_from_server(server)
+                client.update_params(server)
 
         participating_clients = server.randomSample_clients(clients, frac=1.0)
         for client in participating_clients:
-            client.compute_weight_update(local_epoch)   # local training
-            client.reset()                              # reset the gradients (discard the final gradients)
+            client.local_train(local_epoch=local_epoch, train_option='gcfl')   # local training
+            client.reset_params()                              # reset the gradients (discard the final gradients)
 
         similarities = server.compute_pairwise_similarities(clients)
 
@@ -258,7 +258,7 @@ def train_gcfl(
 
         server.aggregate_clusterwise(client_clusters)   # aggregate the weights of the clients in each cluster
 
-        acc_clients = [client.evaluate()[1] for client in clients]  # get the test accuracy of each client
+        acc_clients = [client.local_test()[1] for client in clients]  # get the test accuracy of each client
     ############### END OF COMMUNICATION ROUNDS ###############
         
     for idc in cluster_indices:
@@ -280,7 +280,7 @@ def train_gcfl(
     return frame
 
 
-def train_gcfl_plus(
+def run_GC_gcfl_plus(
         clients: list, 
         server: object,
         communication_rounds: int,
@@ -322,20 +322,20 @@ def train_gcfl_plus(
 
     seqs_grads = {c.id:[] for c in clients}
     for client in clients:
-        client.download_from_server(server)
+        client.update_params(server)
 
     for c_round in range(1, communication_rounds + 1):
         if (c_round) % 50 == 0:
             print(f"  > round {c_round}")
         if c_round == 1:
             for client in clients:
-                client.download_from_server(server)
+                client.update_params(server)
 
         participating_clients = server.randomSample_clients(clients, frac=1.0)
 
         for client in participating_clients:
-            client.compute_weight_update(local_epoch)
-            client.reset()
+            client.local_train(local_epoch=local_epoch, train_option='gcfl')
+            client.reset_params()
 
             seqs_grads[client.id].append(client.convGradsNorm)
 
@@ -362,7 +362,7 @@ def train_gcfl_plus(
 
         server.aggregate_clusterwise(client_clusters)
 
-        acc_clients = [client.evaluate()[1] for client in clients]
+        acc_clients = [client.local_test()[1] for client in clients]
 
     for idc in cluster_indices:
         server.cache_model(idc, clients[idc[0]].W, acc_clients)
@@ -382,7 +382,7 @@ def train_gcfl_plus(
     return frame
 
 
-def train_gcfl_plus_dWs(
+def run_GC_gcfl_plus_dWs(
         clients: list,
         server: object,
         communication_rounds: int,
@@ -424,20 +424,20 @@ def train_gcfl_plus_dWs(
 
     seqs_grads = {c.id:[] for c in clients}
     for client in clients:
-        client.download_from_server(server)
+        client.update_params(server)
 
     for c_round in range(1, communication_rounds + 1):
         if (c_round) % 50 == 0:
             print(f"  > round {c_round}")
         if c_round == 1:
             for client in clients:
-                client.download_from_server(server)
+                client.update_params(server)
 
         participating_clients = server.randomSample_clients(clients, frac=1.0)
 
         for client in participating_clients:
-            client.compute_weight_update(local_epoch)
-            client.reset()
+            client.local_train(local_epoch=local_epoch, train_option='gcfl')
+            client.reset_params()
 
             seqs_grads[client.id].append(client.convDWsNorm)
 
@@ -464,7 +464,7 @@ def train_gcfl_plus_dWs(
 
         server.aggregate_clusterwise(client_clusters)
 
-        acc_clients = [client.evaluate()[1] for client in clients]
+        acc_clients = [client.local_test()[1] for client in clients]
 
     for idc in cluster_indices:
         server.cache_model(idc, clients[idc[0]].W, acc_clients)
