@@ -11,7 +11,7 @@ if [ ! -d "logs/${data_group}" ]; then
     mkdir -p logs/${data_group}
 fi
 
-nohup python -u GCFL.py \
+nohup python -u src/federated_methods.py \
     --repeat ${repeat_} \
     --data_group ${data_group} \
     --num_clients ${client_} \

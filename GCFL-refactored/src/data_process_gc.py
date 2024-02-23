@@ -9,10 +9,10 @@ from torch_geometric.datasets import TUDataset
 from torch_geometric.data import DataLoader
 from torch_geometric.transforms import OneHotDegree
 
-from .gin_models import GIN, serverGIN
-from .server_class import ServerGC
-from .trainer_class import Trainer_GC
-from .utils_gc import get_max_degree, get_stats, split_data, get_num_graph_labels
+from gin_models import GIN, serverGIN
+from server_class import ServerGC
+from trainer_class import Trainer_GC
+from utils_gc import get_max_degree, get_stats, split_data, get_num_graph_labels
 
 
 def rand_split_chunk(
@@ -323,33 +323,3 @@ def setup_server(args: argparse.ArgumentParser=None) -> ServerGC:
     smodel = serverGIN(nlayer=args.nlayer, nhid=args.hidden)
     server = ServerGC(smodel, args.device)
     return server
-
-
-# def setup_devices(splitedData, 
-#                   args=None) -> (list, Server, dict):
-#     '''
-#     Setup devices for clients and server.
-
-#     Args:
-#     - splitedData: dict, the data for each client.
-#     - args: argparse.ArgumentParser, the input arguments.
-
-#     Returns:
-#     - clients: list, the list of clients.
-#     - server: Server, the server.
-#     - idx_clients: dict, the index of clients.
-#     '''
-
-#     idx_clients = {}
-#     clients = []
-#     for idx, dataset_client in enumerate(splitedData.keys()):
-#         idx_clients[idx] = dataset_client
-#         dataloaders, num_node_features, num_graph_labels, train_size = splitedData[dataset_client]
-#         cmodel_gc = GIN(num_node_features, args.hidden, num_graph_labels, args.nlayer, args.dropout)
-#         # optimizer = torch.optim.Adam(cmodel_gc.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-#         optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, cmodel_gc.parameters()), lr=args.lr, weight_decay=args.weight_decay)
-#         clients.append(Client_GC(cmodel_gc, idx, dataset_client, train_size, dataloaders, optimizer, args))
-
-#     smodel = serverGIN(nlayer=args.nlayer, nhid=args.hidden)
-#     server = Server(smodel, args.device)
-#     return clients, server, idx_clients

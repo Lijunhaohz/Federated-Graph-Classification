@@ -5,48 +5,17 @@ import torch
 from pathlib import Path
 import copy
 
-import src.data_process as data_process
-from src.train_func import *
+from data_process_gc import *
+from train_func import *
 
 
-def process_fedavg(clients: list, server: object) -> None:
-    '''
-    Entrance of running the FedAvg algorithm.
-
-    :param clients: list of Client objects
-    :param server: Server object
-    '''
-    print("\nDone setting up FedAvg devices.")
-    print("Running FedAvg ...")
-
-    outfile = os.path.join(outpath, f'accuracy_fedavg_GC.csv')
-
-    frame = run_GC_fedavg(clients, server, args.num_rounds, args.local_epoch, samp=None)
-    frame.to_csv(outfile)
-    print(f"Wrote to file: {outfile}")
-
-
-def process_gcfl(clients: list, server: object) -> None:
-    '''
-    Entrance of running the GCFL algorithm.
-
-    :param clients: list of Client objects
-    :param server: Server object
-    '''
-    print("\nDone setting up GCFL devices.")
-    print("Running GCFL ...")
-
-    outfile = os.path.join(outpath, f'accuracy_gcfl_GC.csv')
-
-    frame = run_GC_gcfl(clients, server, args.num_rounds, args.local_epoch, EPS_1, EPS_2)
-    frame.to_csv(outfile)
-    print(f"Wrote to file: {outfile}")
-
-
-if __name__ == '__main__':
+def GC_Train():
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', type=str, default='cpu',
                         help='CPU / GPU device.')
+    parser.add_argument('--model', type=str, default='FedAvg', 
+                        choices=['SelfTrain', 'FedAvg', 'FedProx, GCFL, GCFL+, GCFL+dWs'],
+                        help='graph classification model to run;')
     parser.add_argument('--num_repeat', type=int, default=5,
                         help='number of repeating rounds to simulate;')
     parser.add_argument('--num_rounds', type=int, default=200,
@@ -122,7 +91,7 @@ if __name__ == '__main__':
     print("Preparing data (original features) ...")
     Path(os.path.join(outpath, 'repeats')).mkdir(parents=True, exist_ok=True)
 
-    splitedData, df_stats = data_process.load_single_dataset(
+    splitedData, df_stats = load_single_dataset(
         args.datapath, args.data_group, num_client=args.num_clients, batch_size=args.batch_size,
         convert_x=args.convert_x, seed=seed_dataSplit, overlap=args.overlap
     )
@@ -133,14 +102,49 @@ if __name__ == '__main__':
     df_stats.to_csv(outf)
     print(f"Wrote to {outf}")
 
-    init_clients, _ = data_process.setup_clients(splitedData, args)
-    init_server = data_process.setup_server(args)
+    init_clients, _ = setup_clients(splitedData, args)
+    init_server = setup_server(args)
 
     print("\nDone setting up devices.")
 
-    #################### run FedAvg ####################
-    # process_fedavg(clients=copy.deepcopy(init_clients), server=copy.deepcopy(init_server))
-    
-    #################### run GCFL ####################
-    process_gcfl(clients=copy.deepcopy(init_clients), server=copy.deepcopy(init_server))
+    print(f"Running {args.model} ...")
+
+    outfile = os.path.join(outpath, f'accuracy_{args.model}.csv')
+
+    clients = copy.deepcopy(init_clients)
+    server = copy.deepcopy(init_server)
+
+    ################ Choose the model to run ################
+    if args.model == 'SelfTrain':
+        output = run_GC_selftrain(clients=clients, server=server, local_epoch=args.local_epoch)
+
+    elif args.model == 'FedAvg':
+        output = run_GC_fedavg(
+            clients=clients, server=server, communication_rounds=args.num_rounds, 
+            local_epoch=args.local_epoch, samp=None)
+        
+    elif args.model == 'FedProx':
+        output = run_GC_fedprox(
+            clients=clients, server=server, communication_rounds=args.num_rounds, 
+            local_epoch=args.local_epoch, mu=0.01, samp=None)
+        
+    elif args.model == 'GCFL':
+        output = run_GC_gcfl(
+            clients=clients, server=server, communication_rounds=args.num_rounds, 
+            local_epoch=args.local_epoch, EPS_1=args.epsilon1, EPS_2=args.epsilon2)
+        
+    elif args.model == 'GCFL+':
+        output = run_GC_gcfl_plus(
+            clients=clients, server=server, communication_rounds=args.num_rounds, 
+            local_epoch=args.local_epoch, EPS_1=args.epsilon1, EPS_2=args.epsilon2,
+            seq_length=args.seq_length, standardize=args.standardize)
+        
+    elif args.model == 'GCFL+dWs':
+        output = run_GC_gcfl_plus(
+            clients=clients, server=server, communication_rounds=args.num_rounds, 
+            local_epoch=args.local_epoch, EPS_1=args.epsilon1, EPS_2=args.epsilon2,
+            seq_length=args.seq_length, standardize=args.standardize)
+        
+    output.to_csv(outfile)
+    print(f"Wrote to file: {outfile}")
 
