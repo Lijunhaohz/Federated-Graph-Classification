@@ -1,8 +1,87 @@
+import argparse
+
 import pandas as pd
 import torch
 from torch_geometric.utils import to_networkx, degree
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
+
+from .gin_models import GIN, serverGIN
+from .server_class import ServerGC
+from .trainer_class import Trainer_GC
+
+
+def setup_clients(splited_data: dict, args: argparse.ArgumentParser=None) -> tuple:
+    '''
+    Setup clients for graph classification.
+
+    Parameters
+    ----------
+    splitedData: dict
+        The data for each client.
+    args: argparse.ArgumentParser
+        The input arguments.
+
+    Returns
+    -------
+    clients: list
+        List of clients.
+    idx_clients: dict
+        Dictionary of client indices.
+    '''
+    idx_clients = {}
+    clients = []
+    for idx, dataset_client_name in enumerate(splited_data.keys()):
+        idx_clients[idx] = dataset_client_name
+        '''acquire data'''
+        dataloaders, num_node_features, num_graph_labels, train_size = splited_data[dataset_client_name]
+
+        '''build GIN model'''
+        cmodel_gc = GIN(nfeat=num_node_features, 
+                        nhid=args.hidden, 
+                        nclass=num_graph_labels, 
+                        nlayer=args.nlayer, 
+                        dropout=args.dropout)
+       
+        '''build optimizer'''
+        optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, cmodel_gc.parameters()), 
+                                     lr=args.lr, 
+                                     weight_decay=args.weight_decay)
+
+        '''build client'''
+        client = Trainer_GC(
+            model=cmodel_gc,                     # GIN model
+            client_id=idx,                       # client id
+            client_name=dataset_client_name,     # client name
+            train_size=train_size,               # training size
+            dataloader=dataloaders,              # data loader
+            optimizer=optimizer,                 # optimizer
+            args=args
+        )
+
+        clients.append(client)
+
+    return clients, idx_clients
+
+
+def setup_server(args: argparse.ArgumentParser=None) -> ServerGC:
+    '''
+    Setup server.
+
+    Parameters
+    ----------
+    args: argparse.ArgumentParser
+        The input arguments.
+
+    Returns
+    -------
+    server: ServerGC
+        The server.
+    '''
+
+    smodel = serverGIN(nlayer=args.nlayer, nhid=args.hidden)
+    server = ServerGC(smodel, args.device)
+    return server
 
 
 def get_max_degree(graphs) -> int:

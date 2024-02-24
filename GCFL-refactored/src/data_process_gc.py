@@ -9,10 +9,7 @@ from torch_geometric.datasets import TUDataset
 from torch_geometric.data import DataLoader
 from torch_geometric.transforms import OneHotDegree
 
-from gin_models import GIN, serverGIN
-from server_class import ServerGC
-from trainer_class import Trainer_GC
-from utils_gc import get_max_degree, get_stats, split_data, get_num_graph_labels
+from .utils_gc import get_max_degree, get_stats, split_data, get_num_graph_labels
 
 
 def rand_split_chunk(
@@ -258,68 +255,3 @@ def load_multiple_dataset(
         )
 
     return splited_data, stats_df
-
-
-def setup_clients(splitedData: dict, 
-                  args: argparse.ArgumentParser=None) -> tuple:
-    '''
-    Setup clients
-
-    Args:
-    - splitedData: dict, the data for each client.
-    - args: argparse.ArgumentParser, the input arguments.
-
-    Returns:
-    - clients: list, the list of clients.
-    - idx_clients: dict, the index of clients.
-    '''
-
-    idx_clients = {}
-    clients = []
-    for idx, dataset_client_name in enumerate(splitedData.keys()):
-        idx_clients[idx] = dataset_client_name
-        '''acquire data'''
-        dataloaders, num_node_features, num_graph_labels, train_size = splitedData[dataset_client_name]
-
-        '''build GIN model'''
-        cmodel_gc = GIN(nfeat=num_node_features, 
-                        nhid=args.hidden, 
-                        nclass=num_graph_labels, 
-                        nlayer=args.nlayer, 
-                        dropout=args.dropout)
-       
-        '''build optimizer'''
-        optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, cmodel_gc.parameters()), 
-                                     lr=args.lr, 
-                                     weight_decay=args.weight_decay)
-
-        '''build client'''
-        client = Trainer_GC(
-            model=cmodel_gc,                     # GIN model
-            client_id=idx,                       # client id
-            client_name=dataset_client_name,     # client name
-            train_size=train_size,               # training size
-            dataLoader=dataloaders,              # data loader
-            optimizer=optimizer,                 # optimizer
-            args=args
-        )
-
-        clients.append(client)
-
-    return clients, idx_clients
-
-
-def setup_server(args: argparse.ArgumentParser=None) -> ServerGC:
-    '''
-    Setup server.
-
-    Args:
-    - args: argparse.ArgumentParser, the input arguments.
-
-    Returns:
-    - server: Server, the server.
-    '''
-
-    smodel = serverGIN(nlayer=args.nlayer, nhid=args.hidden)
-    server = ServerGC(smodel, args.device)
-    return server

@@ -5,6 +5,60 @@ class Trainer_GC():
     '''
     A trainer class specified for graph classification tasks, which includes functionalities required
     for training GIN models on a subset of a distributed dataset, handling local training and testing, parameter updates, and feature aggregation.
+    
+    Parameters
+    ----------
+    model: object
+        The model to be trained, which is based on the GIN model.
+    client_id: int
+        The ID of the client.
+    client_name: str
+        The name of the client.
+    train_size: int
+        The size of the training dataset.
+    dataLoader: dict
+        The dataloaders for training, validation, and testing.
+    optimizer: object
+        The optimizer for training.
+    args: object
+        The arguments for the training.
+
+    Attributes
+    ----------
+    model: object
+        The model to be trained, which is based on the GIN model.
+    id: int
+        The ID of the client.
+    name: str
+        The name of the client.
+    train_size: int
+        The size of the training dataset.
+    dataloader: dict
+        The dataloaders for training, validation, and testing.
+    optimizer: object
+        The optimizer for training.
+    args: object
+        The arguments for the training.
+    W: dict
+        The weights of the model.
+    dW: dict
+        The gradients of the model.
+    W_old: dict
+        The cached weights of the model.
+    gconv_names: list
+        The names of the gconv layers.
+    train_stats: tuple
+        The training statistics of the model.
+    weights_norm: float
+        The norm of the weights of the model.
+    grads_norm: float
+        The norm of the gradients of the model.
+    conv_grads_norm: float
+        The norm of the gradients of the gconv layers.
+    conv_weights_Norm: float
+        The norm of the weights of the gconv layers.
+    conv_dWs_norm: float
+        The norm of the gradients of the gconv layers.
     '''
     def __init__(
             self, 
@@ -12,7 +66,7 @@ class Trainer_GC():
             client_id: int, 
             client_name: str, 
             train_size: int, 
-            dataLoader: dict, 
+            dataloader: dict, 
             optimizer: object, 
             args: object
     ) -> None:
@@ -20,7 +74,7 @@ class Trainer_GC():
         self.id = client_id
         self.name = client_name
         self.train_size = train_size
-        self.dataLoader = dataLoader
+        self.dataloader = dataloader
         self.optimizer = optimizer
         self.args = args
 
@@ -28,14 +82,14 @@ class Trainer_GC():
         self.dW = {key: torch.zeros_like(value) for key, value in self.model.named_parameters()}
         self.W_old = {key: value.data.clone() for key, value in self.model.named_parameters()}
 
-        self.gconvNames = None
+        self.gconv_names = None
 
         self.train_stats = ([0], [0], [0], [0])
-        self.weightsNorm = 0.
-        self.gradsNorm = 0.
-        self.convGradsNorm = 0.
-        self.convWeightsNorm = 0.
-        self.convDWsNorm = 0.
+        self.weights_norm = 0.
+        self.grads_norm = 0.
+        self.conv_grads_norm = 0.
+        self.conv_weights_norm = 0.
+        self.conv_dWs_norm = 0.
 
     ########### Public functions ###########
     def update_params(self, server: object) -> None:

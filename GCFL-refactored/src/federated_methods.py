@@ -1,75 +1,37 @@
 import os
 import argparse
 import random
-import torch
 from pathlib import Path
 import copy
+import yaml
 
-from data_process_gc import *
-from train_func import *
+import numpy as np
+import torch
+
+from .data_process_gc import *
+from .train_func import *
+from .utils_gc import *
 
 
-def GC_Train():
+def GC_Train(config: dict):
+    '''
+    Entrance of the training process for graph classification.
+
+    Parameters
+    ----------
+    model: str
+        The model to run.
+    '''
+    # transfer the config to argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device', type=str, default='cpu',
-                        help='CPU / GPU device.')
-    parser.add_argument('--model', type=str, default='FedAvg', 
-                        choices=['SelfTrain', 'FedAvg', 'FedProx, GCFL, GCFL+, GCFL+dWs'],
-                        help='graph classification model to run;')
-    parser.add_argument('--num_repeat', type=int, default=5,
-                        help='number of repeating rounds to simulate;')
-    parser.add_argument('--num_rounds', type=int, default=200,
-                        help='number of rounds to simulate;')
-    parser.add_argument('--local_epoch', type=int, default=1,
-                        help='number of local epochs;')
-    parser.add_argument('--lr', type=float, default=0.001,
-                        help='learning rate for inner solver;')
-    parser.add_argument('--weight_decay', type=float, default=5e-4,
-                        help='Weight decay (L2 loss on parameters).')
-    parser.add_argument('--nlayer', type=int, default=3,
-                        help='Number of GINconv layers')
-    parser.add_argument('--hidden', type=int, default=64,
-                        help='Number of hidden units.')
-    parser.add_argument('--dropout', type=float, default=0.5,
-                        help='Dropout rate (1 - keep probability).')
-    parser.add_argument('--batch_size', type=int, default=128,
-                        help='Batch size for node classification.')
-    parser.add_argument('--seed', help='seed for randomness;',
-                        type=int, default=123)
-
-    parser.add_argument('--datapath', type=str, default='./data',
-                        help='The input path of data.')
-    parser.add_argument('--outbase', type=str, default='./outputs',
-                        help='The base path for outputting.')
-    parser.add_argument('--repeat', help='index of repeating;',
-                        type=int, default=None)
-    parser.add_argument('--data_group', help='specify the group of datasets',
-                        type=str, default='small')
-
-    parser.add_argument('--convert_x', help='whether to convert original node features to one-hot degree features',
-                        type=bool, default=False)
-    parser.add_argument('--num_clients', help='number of clients',
-                        type=int, default=10)
-    parser.add_argument('--overlap', help='whether clients have overlapped data',
-                        type=bool, default=False)
-    parser.add_argument('--standardize', help='whether to standardize the distance matrix',
-                        type=bool, default=False)
-    parser.add_argument('--seq_length', help='the length of the gradient norm sequence',
-                        type=int, default=5)
-    parser.add_argument('--epsilon1', help='the threshold epsilon1 for GCFL',
-                        type=float, default=0.05)
-    parser.add_argument('--epsilon2', help='the threshold epsilon2 for GCFL',
-                        type=float, default=0.1)
-
-    try:
-        args = parser.parse_args()
-    except IOError as msg:
-        parser.error(str(msg))
+    args = parser.parse_args()
+    for key, value in config.items():
+        setattr(args, key, value)
 
     print(args)
-    seed_dataSplit = 123
 
     #################### set seeds and devices ####################
+    seed_split_data = 42    # seed for splitting data must be fixed
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -77,46 +39,53 @@ def GC_Train():
 
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    EPS_1 = args.epsilon1
-    EPS_2 = args.epsilon2
+    #################### set output directory ####################
+    # outdir_base = os.path.join(args.outbase, f'seqLen{args.seq_length}')
+    outdir_base = args.outbase + '/' + f'{args.model}'
+    outdir = os.path.join(outdir_base, f"oneDS-nonOverlap")
+    if args.model in ['SelfTrain']:
+        outdir = os.path.join(outdir, f'{args.data_group}')
+    elif args.model in ['FedAvg', 'FedProx']:
+        outdir = os.path.join(outdir, f'{args.data_group}-{args.num_clients}clients')
+    elif args.model in ['GCFL']:
+        outdir = os.path.join(outdir, f'{args.data_group}-{args.num_clients}clients', 
+                              f'eps_{args.epsilon1}_{args.epsilon2}')
+    elif args.model in ['GCFL+', 'GCFL+dWs']:
+        outdir = os.path.join(outdir, f'{args.data_group}-{args.num_clients}clients', 
+                              f'eps_{args.epsilon1}_{args.epsilon2}', f'seqLen{args.seq_length}')
 
-    outbase = os.path.join(args.outbase, f'seqLen{args.seq_length}')
-    outpath = os.path.join(outbase, f"oneDS-nonOverlap")
-    outpath = os.path.join(outpath, f'{args.data_group}-{args.num_clients}clients', f'eps_{EPS_1}_{EPS_2}')
-    Path(outpath).mkdir(parents=True, exist_ok=True)
-    print(f"Output Path: {outpath}")
+    Path(outdir).mkdir(parents=True, exist_ok=True)
+    print(f"Output Path: {outdir}")
 
     #################### distributed one dataset to multiple clients ####################
     """ using original features """
     print("Preparing data (original features) ...")
-    Path(os.path.join(outpath, 'repeats')).mkdir(parents=True, exist_ok=True)
 
-    splitedData, df_stats = load_single_dataset(
+    splited_data, df_stats = load_single_dataset(
         args.datapath, args.data_group, num_client=args.num_clients, batch_size=args.batch_size,
-        convert_x=args.convert_x, seed=seed_dataSplit, overlap=args.overlap
+        convert_x=args.convert_x, seed=seed_split_data, overlap=args.overlap
     )
     print("Data prepared.")
 
     #################### save statistics of data on clients ####################
-    outf = os.path.join(outpath, "repeats", f'{args.repeat}_stats_trainData.csv')
-    df_stats.to_csv(outf)
-    print(f"Wrote to {outf}")
+    outdir_stats = os.path.join(outdir, f'stats_train_data.csv')
+    df_stats.to_csv(outdir_stats)
+    print(f"The statistics of the data are written to {outdir_stats}")
 
-    init_clients, _ = setup_clients(splitedData, args)
-    init_server = setup_server(args)
+    #################### setup devices ####################
+    if args.model not in ['SelfTrain']:
+        init_clients, _ = setup_clients(splited_data, args)
+        init_server = setup_server(args)
+        clients = copy.deepcopy(init_clients)
+        server = copy.deepcopy(init_server)
 
     print("\nDone setting up devices.")
 
+    ################ choose the model to run ################
     print(f"Running {args.model} ...")
-
-    outfile = os.path.join(outpath, f'accuracy_{args.model}.csv')
-
-    clients = copy.deepcopy(init_clients)
-    server = copy.deepcopy(init_server)
-
-    ################ Choose the model to run ################
     if args.model == 'SelfTrain':
-        output = run_GC_selftrain(clients=clients, server=server, local_epoch=args.local_epoch)
+        output = run_GC_selftrain(
+            clients=clients, server=server, local_epoch=args.local_epoch)
 
     elif args.model == 'FedAvg':
         output = run_GC_fedavg(
@@ -126,7 +95,7 @@ def GC_Train():
     elif args.model == 'FedProx':
         output = run_GC_fedprox(
             clients=clients, server=server, communication_rounds=args.num_rounds, 
-            local_epoch=args.local_epoch, mu=0.01, samp=None)
+            local_epoch=args.local_epoch, mu=args.mu, samp=None)
         
     elif args.model == 'GCFL':
         output = run_GC_gcfl(
@@ -145,6 +114,14 @@ def GC_Train():
             local_epoch=args.local_epoch, EPS_1=args.epsilon1, EPS_2=args.epsilon2,
             seq_length=args.seq_length, standardize=args.standardize)
         
-    output.to_csv(outfile)
-    print(f"Wrote to file: {outfile}")
+    else:
+        raise ValueError(f"Unknown model: {args.model}")
+        
+    #################### save the output ####################
+    outdir_result = os.path.join(outdir, f'accuracy_seed{args.seed}.csv')
+    output.to_csv(outdir_result)
+    print(f"The output has been written to file: {outdir_result}")
 
+
+if __name__ == "__main__":
+    GC_Train(model='GCFL')
